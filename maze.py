@@ -1,5 +1,7 @@
 import pygame
 import random
+import time
+from agent import Agent
 
 # Initialize Pygame
 pygame.init()
@@ -10,9 +12,10 @@ BLACK = (0, 0, 0) # WALL COLOR
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 
-# Cell size
 CELL_SIZE = 20
+AGENT_CIRCLE_RADIUS = CELL_SIZE/4
 
+TIMESTEP_LENGTH = 0.5 # ONE TIME STEP LASTS 0.5 SECONDS
 class Maze:
     def __init__(self, width, height):
         self.width = width*2 -1
@@ -20,7 +23,8 @@ class Maze:
         self.maze = None
         self.start = (0, 0)
         self.end = None
-
+        self.agent = Agent(5, 5, RED)
+        self.last_timestep = time.time()
         self.set_screen()
 
     # resets the data structure for the maze, where 1 represents walls and 0 represents paths
@@ -90,11 +94,16 @@ class Maze:
         
         # Draw start
         pygame.draw.rect(self.screen, GREEN, (self.start[0]*CELL_SIZE, self.start[1]*CELL_SIZE, CELL_SIZE, CELL_SIZE))
-        
         # Draw end
         pygame.draw.rect(self.screen, RED, (self.end[0]*CELL_SIZE, self.end[1]*CELL_SIZE, CELL_SIZE, CELL_SIZE))
 
+        x = self.agent.x * CELL_SIZE + CELL_SIZE//2
+        y = self.agent.y * CELL_SIZE + CELL_SIZE//2
+        agent_center = (x,y)
+        pygame.draw.circle(self.screen, self.agent.color, agent_center, 8)
+
         pygame.display.flip()
+
 
     def set_screen(self):
         screen_width = self.width * CELL_SIZE
@@ -102,8 +111,13 @@ class Maze:
         self.screen = pygame.display.set_mode((screen_width, screen_height))
         pygame.display.set_caption("Random Maze Generator")
 
+    def step(action):
+        if action < 4:
+            
+
+
 def main():
-    maze_width, maze_height = 20,20
+    maze_width, maze_height = 10,10
     
     # Generate and draw the maze
     maze_gen = Maze(maze_width, maze_height)
@@ -119,6 +133,12 @@ def main():
                 if event.key == pygame.K_SPACE:
                     # Generate a new maze when space is pressed
                     maze_gen.generate_maze()
+        
+        if time.time() - maze_gen.last_timestep >= TIMESTEP_LENGTH:
+            maze_gen.last_timestep = time.time()
+            maze_gen.agent.x += 1
+            maze_gen.agent.y += 1
+        maze_gen.draw_maze()
 
     pygame.quit()
 
