@@ -1,14 +1,14 @@
 from neural_net import simple_nn
-import gymnasium as gym
 import torch
 from numpy import mean, sum
 
 class PPO():
-    def __init__(self, env_name, epochs = 50, batch_size = 1500,
-                 discount_rate = .97, updates_per_batch = 5):
-        self.env = gym.make(env_name, render_mode = 'human')
-        self.input_size = self.env.observation_space.shape[0]
-        self.output_size = self.env.action_space.n
+    def __init__(self, maze, epochs = 50, batch_size = 5000,
+                 discount_rate = 0.98, updates_per_batch = 5):
+        
+        self.maze = maze
+        self.input_size = self.maze.observation_space
+        self.output_size = self.env.action_space
         self.actor = simple_nn(self.input_size, self.output_size)
         self.critic  = simple_nn(self.input_size, 1)
 
@@ -21,12 +21,14 @@ class PPO():
     def train(self):
         for i in range(self.epochs):
             batch_obs, batch_actions, batch_log_probs, batch_rew, batch_lens = self.get_batch()
+            print(f"Epoch average exit time: {mean(batch_lens)}")
+            print(f"")
             batch_rtgs = self.get_rtgs(batch_rew)
-            batch_returns = [sum(episode_rew) for episode_rew in batch_rew]
-            print(f"epoch #{i}: average epoch return: {mean(batch_returns)}, average epoch lengths: {mean(batch_lens)}")
+            
             for i in range(self.updates_per_batch):
                 state_values = self.get_state_values(batch_obs)
                 advantage = batch_rtgs - state_values.detach()
+
                 # normalize advantage to reduce variance
                 advantage = (advantage - torch.mean(advantage))/ torch.std(advantage) + 1e-10
                 current_log_prob = self.get_log_probs(batch_obs, batch_actions)
@@ -62,14 +64,14 @@ class PPO():
 
             batch_obs.append(obs)
             action, log_prob = self.get_action(obs)
-            obs,reward,done,failed,_ = self.env.step(action)
+            obs,reward,done = self.maze.step(action)
 
             episode_rew.append(reward)
             batch_log_probs.append(log_prob)
             batch_act.append(action)
             current_t += 1
 
-            if done or failed:
+            if done:
                 obs = self.env.reset()[0]
                 batch_rew.append(episode_rew)
                 batch_lens.append(len(episode_rew))

@@ -20,10 +20,3 @@ class simple_nn(nn.Module):
             x = self.activations[i](self.layers[i](x))
         x = self.layers[-1](x)
         return x
-    
-hi = simple_nn([1,24,25,2])
-print(hi.activations)
-print(hi.layers)
-
-x = hi([4])
-print(x)
