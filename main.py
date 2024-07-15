@@ -3,5 +3,5 @@ from maze import Maze
 
 def main():
     maze = Maze()
-    maze.agent.brain.train()
+    maze.agent.brain.train(maze_size_range=[4,15])
 main()

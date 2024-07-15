@@ -15,7 +15,6 @@ class simple_nn(nn.Module):
 
     def forward(self, x):
         x = torch.as_tensor(x, dtype=torch.float32)
-
         for i in range(len(self.layers) - 1):
             x = self.activations[i](self.layers[i](x))
         x = self.layers[-1](x)

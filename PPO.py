@@ -9,7 +9,7 @@ CRITIC_PATH = 'critic.pth'
 
 class PPO():
     def __init__(self, maze, epochs = 5000, batch_size = 6000,
-                 discount_rate = 1, updates_per_batch = 5, mbatch_size = 64):
+                 discount_rate = 0.99, updates_per_batch = 5, mbatch_size = 64):
         
         self.maze = maze
         self.input_size = self.maze.observation_space
@@ -28,12 +28,12 @@ class PPO():
 
         self.load_parameters()
 
-    def train(self):
-        for _ in range(self.epochs):
-            batch_obs, batch_actions, batch_log_probs, batch_rew, batch_shortest_paths, episode_lens, entropies = self.get_batch()
-
-            print(f"Average batch exit time: {np.mean(episode_lens)}")
-            print(f"Average length of shortest path: {np.mean(batch_shortest_paths)}")
+    def train(self, maze_size_range = [8,12]):
+        for i in range(self.epochs):
+            batch_obs, batch_actions, batch_log_probs, batch_rew, batch_shortest_paths, episode_lens, entropies = self.get_batch(maze_size_range)
+            print(f"Epoch{i+1}")
+            for i in range(len(episode_lens)):
+                print(f"Run {i+1}: exit time:{episode_lens[i]}, shortest path length: {batch_shortest_paths[i]}")
             print()
 
             rtgs = self.get_rtgs(batch_rew)
@@ -79,7 +79,8 @@ class PPO():
 
             self.save_parameters()
     
-    def get_batch(self):
+    def get_batch(self, rand_range):
+        
         batch_obs = []
         batch_rew = []
         batch_act = []
@@ -90,13 +91,13 @@ class PPO():
 
         # we need seperate arrays for episode rewards to aid reward-to-go calculations
         episode_rew = []
-        obs = self.maze.reset()
+        obs, action_mask = self.maze.reset(rand_range = rand_range)
         total_timesteps = 0
 
         while True:
             batch_obs.append(obs)
-            action, log_prob, entropy = self.get_action(obs)
-            obs,reward,done = self.maze.step(action)
+            action, log_prob, entropy = self.get_action(obs, action_mask)
+            obs, action_mask, reward,done = self.maze.step(action)
             # print(f"action: {action}, prob: {torch.exp(log_prob)}")
             episode_rew.append(reward)
             batch_log_probs.append(log_prob)
@@ -106,7 +107,7 @@ class PPO():
             # print(f"{self.maze.agent.x}, {self.maze.agent.y}")
             if done:
                 batch_shortest_paths.append(self.maze.shortest_path_len)
-                obs = self.maze.reset()
+                obs, action_mask = self.maze.reset(rand_range = rand_range)
                 batch_rew.append(episode_rew)
                 episode_lens.append(len(episode_rew))
                 episode_rew = []
@@ -122,9 +123,11 @@ class PPO():
 
         return batch_obs, batch_act, batch_log_probs, batch_rew, batch_shortest_paths, episode_lens, batch_entropies
 
-    def get_action(self, obs):
+    def get_action(self, obs, action_mask):
+        action_mask = torch.as_tensor(action_mask, dtype=torch.bool)
         logits = self.actor(obs)
-        distribution = torch.distributions.Categorical(logits = logits)
+        adjusted_logits = torch.where(action_mask, logits, torch.tensor(-1e+8))
+        distribution = torch.distributions.Categorical(logits = adjusted_logits)
         action = distribution.sample()
         return action.item(), distribution.log_prob(action), distribution.entropy()
         

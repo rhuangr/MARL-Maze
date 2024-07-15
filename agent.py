@@ -10,7 +10,7 @@ class Agent:
         self.direction = 2 # value at index of ['north', 'east, 'south', 'west']
         self.tag = 2
 
-    def get_action(self, obs):
-        action, prob , _ = self.brain.get_action(obs)
+    def get_action(self, obs, mask):
+        action, prob , _ = self.brain.get_action(obs, mask)
         return action, math.exp(prob)
 
