@@ -79,7 +79,7 @@ class PPO():
 
             self.save_parameters()
     
-    def get_batch(self, rand_range):
+    def get_batch(self):
         
         batch_obs = []
         batch_rew = []
@@ -91,7 +91,7 @@ class PPO():
 
         # we need seperate arrays for episode rewards to aid reward-to-go calculations
         episode_rew = []
-        obs, action_mask = self.maze.reset(rand_range = rand_range)
+        obs, action_mask = self.maze.reset()
         total_timesteps = 0
 
         while True:
@@ -107,7 +107,7 @@ class PPO():
             # print(f"{self.maze.agent.x}, {self.maze.agent.y}")
             if done:
                 batch_shortest_paths.append(self.maze.shortest_path_len)
-                obs, action_mask = self.maze.reset(rand_range = rand_range)
+                obs, action_mask = self.maze.reset()
                 batch_rew.append(episode_rew)
                 episode_lens.append(len(episode_rew))
                 episode_rew = []
