@@ -3,6 +3,7 @@ import random
 import time
 from agent import Agent
 
+random.seed(142341)
 
 # Initialize Pygame
 pygame.init()
@@ -15,7 +16,7 @@ RED =  pygame.Color("red")
 PALE_RED = (255, 100, 150)
 GREEN = (0, 255, 0)
 
-CELL_SIZE = 20
+CELL_SIZE = 40
 AGENT_RADIUS = CELL_SIZE/2.2
 AGENT_EYE_RADIUS = AGENT_RADIUS//4
 
@@ -31,7 +32,8 @@ DELTAS = [(0, -1), (1, 0), (0, 1), (-1, 0)]
 
 
 class Maze:
-    def __init__(self, max_timestep = 5_000, hardcore=False, rand_start=True, rand_sizes=True, rand_range=[6,12], default_size = [8,8]):
+    def __init__(self, max_timestep = 5000, hardcore=False, rand_start=True,
+                 rand_sizes=True, rand_range=[6,12], default_size = [8,8]):
 
         # maze characteristics
         self.width = default_size[0] * 2 - 1
@@ -42,11 +44,12 @@ class Maze:
         self.shortest_path = []
         self.shortest_path_len = 0
 
-        self.observation_space = 20
+        self.observation_space = 22
         self.action_space = 8
         self.max_timestep = max_timestep
 
-        self.agent = Agent(self.start[0], self.start[1], RED, self)
+        self.agent = None
+        self.set_agents()
         # self.agent = Agent(16, 10, RED, self)
 
         self.current_t = 0
@@ -62,8 +65,7 @@ class Maze:
 
     def reset(self):
         self.current_t = 0
-        self.agent.direction = 0
-        
+
         if self.rand_gen == True:
             self.height = random.randint(self.rand_range[0], self.rand_range[1]) * 2 - 1
             self.width = random.randint(self.rand_range[0], self.rand_range[1]) * 2 - 1
@@ -72,6 +74,10 @@ class Maze:
         self.build_maze()
         self.agent.x, self.agent.y = self.start
         return self.get_observations()
+    
+    def set_agents(self):
+        self.agent = Agent(self.start[0], self.start[1], RED, self)
+        self.agent.direction = 2
 
     def build_maze(self):
         
@@ -102,7 +108,11 @@ class Maze:
         if self.hardcore == False:
             self.set_end()
             self.shortest_path = self.get_shortest_path()
-            self.shortest_path_len = len(self.shortest_path)
+            self.shortest_path_len = len(self.shortest_path) - 1
+            while self.shortest_path_len < 3:
+                self.set_end()
+                self.shortest_path = self.get_shortest_path()
+                self.shortest_path_len = len(self.shortest_path) - 1
             return
         
         # if hardcore mode enabled, set end 5 times and choose the end which yields the longest shortest path
@@ -162,19 +172,33 @@ class Maze:
         self.maze[(y1 + y2) // 2][(x1 + x2) // 2] = 0
 
     def set_end(self):
-
-        while True:
-            end_x = random.randint(0, self.width - 1)
-            end_y = random.randint(0, self.height - 1)
-            temp_end = [end_x, end_y]
-            coin = random.randint(0,1)
-            end_location = self.width - 1 if coin == 0 else self.height - 1
-            temp_end[coin] = end_location if random.randint(0,1) == 0 else 0
-            print(f"{temp_end} and {self.width},{self.height}")
-            print()
-            if self.maze[temp_end[1]][temp_end[0]] == 0:
-                self.end = (temp_end[0], temp_end[1])
-                break
+        end = random.randint(0,1)
+        if end == 0:
+            y = self.height - 1
+            while True:
+                x = random.randint(0, self.width - 1)
+                if self.maze[y][x] == 0:
+                    self.end = (x, y)
+                    break
+        else:
+            x = self.width - 1
+            while True:
+                y = random.randint(0, self.height - 1)
+                if self.maze[y][x] == 0:
+                    self.end = (x, y)
+                    break
+        # while True:
+        #     end_x = random.randint(0, self.width - 1)
+        #     end_y = random.randint(0, self.height - 1)
+        #     temp_end = [end_x, end_y]
+        #     coin = random.randint(0,1)
+        #     end_location = self.width - 1 if coin == 0 else self.height - 1
+        #     temp_end[coin] = end_location if random.randint(0,1) == 0 else 0
+        #     # print(f"{temp_end} and {self.width},{self.height}")
+        #     # print()
+        #     if self.maze[temp_end[1]][temp_end[0]] == 0:
+        #         self.end = (temp_end[0], temp_end[1])
+        #         break
 
     def draw_maze(self):
 
@@ -237,7 +261,7 @@ class Maze:
         # action logic
         if action > 3:
             self.maze[self.agent.y][self.agent.x] = self.agent.tag
-
+        
         adjusted_action = (action + self.agent.direction) % 4
         x_dif, y_dif = DELTAS[adjusted_action]
         new_x, new_y = self.agent.x + x_dif, self.agent.y + y_dif
@@ -245,15 +269,15 @@ class Maze:
         if (0 <= new_x < self.width and 0 <= new_y < self.height and self.maze[new_y][new_x] != 1):
             self.agent.x = new_x
             self.agent.y = new_y
+            self.agent.direction = adjusted_action
+            self.agent.estimate_maze(adjusted_action)
             # print(f"facing: {DIRECTIONS[self.agent.direction]}, action taken: {action} and {ACTIONS[adjusted_action]}, new x,y: {self.agent.x},{self.agent.y}")
-
-        self.agent.direction = adjusted_action
-
+        
         # reward function
         if (self.agent.x, self.agent.y) == self.end:
             reward = 1
         elif self.maze[self.agent.y][self.agent.x] == 0:
-            reward = 0.009
+            reward = 0.005
         else:
             reward = 0
 
@@ -271,7 +295,7 @@ class Maze:
         direction = self.get_agent_direction()
         dead_ends, action_mask = self.get_dead_ends()
         
-        mark_action_mask = [True] * 4 if self.maze[self.agent.y][self.agent.x] != self.agent.tag else [False] * 4
+        mark_action_mask = action_mask if self.maze[self.agent.y][self.agent.x] != self.agent.tag else [False] * 4
         action_mask.extend(mark_action_mask)
         
         visible_marked, visible_unmarked, visible_end = self.get_visibility_features()
@@ -285,6 +309,12 @@ class Maze:
 
         observations.append(on_marked_square)
         observations.append(timestep)
+        
+        relative_x = 0 if self.agent.width_estimate < 5 else (self.agent.x - self.agent.min_x_visited - 1) / self.agent.width_estimate
+        relative_y = 0 if self.agent.height_estimate < 5 else (self.agent.max_y_visited - self.agent.y) / self.agent.height_estimate
+        observations.append(relative_x)
+        observations.append(relative_y)
+        
         return observations, action_mask
 
     # returns the binary representation of a direction that the agent is facing
@@ -429,5 +459,5 @@ class Maze:
         pygame.quit()
 
 if __name__ == "__main__":
-    maze = Maze(rand_sizes=True)
+    maze = Maze(rand_start=False)
     maze.display_policy()

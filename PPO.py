@@ -28,9 +28,9 @@ class PPO():
 
         self.load_parameters()
 
-    def train(self, maze_size_range = [8,12]):
+    def train(self):
         for i in range(self.epochs):
-            batch_obs, batch_actions, batch_log_probs, batch_rew, batch_shortest_paths, episode_lens, entropies = self.get_batch(maze_size_range)
+            batch_obs, batch_actions, batch_log_probs, batch_rew, batch_shortest_paths, episode_lens, entropies = self.get_batch()
             print(f"Epoch{i+1}")
             for i in range(len(episode_lens)):
                 print(f"Run {i+1}: exit time:{episode_lens[i]}, shortest path length: {batch_shortest_paths[i]}")
@@ -53,17 +53,17 @@ class PPO():
                     m_rtgs = rtgs[mbatch_indices]
                     m_state_values = self.get_state_values(m_obs)
                     m_advantage = m_rtgs - m_state_values.detach()
-
                     m_entropies = entropies[mbatch_indices]
 
                     # normalize advantage to reduce variance
-                    advantage = (m_advantage - torch.mean(m_advantage))/ torch.std(m_advantage) + 1e-10
+                    m_advantage = (m_advantage - torch.mean(m_advantage))/ torch.std(m_advantage) + 1e-10
                     current_log_prob = self.get_log_probs(m_obs, m_actions)
                     log_prob_ratios = torch.exp(current_log_prob - m_log_probs)
 
                     surrogate1 = log_prob_ratios * m_advantage
                     surrogate2 = torch.clamp(log_prob_ratios, 1-self.clip, 1+ self.clip) * m_advantage
-
+                    
+                    # actor loss calculations
                     actor_loss = -torch.mean(torch.min(surrogate1, surrogate2))
                     actor_loss = actor_loss - self.beta * torch.mean(torch.as_tensor(m_entropies))
                     self.actor.optimizer.zero_grad()
@@ -71,6 +71,7 @@ class PPO():
                     actor_loss.backward()
                     self.actor.optimizer.step()
 
+                    # critic loss calculations
                     critic_loss = torch.mean(torch.pow((m_rtgs - m_state_values), 2))
                     self.critic.optimizer.zero_grad()
                     torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad)
@@ -126,7 +127,7 @@ class PPO():
     def get_action(self, obs, action_mask):
         action_mask = torch.as_tensor(action_mask, dtype=torch.bool)
         logits = self.actor(obs)
-        adjusted_logits = torch.where(action_mask, logits, torch.tensor(-1e+8))
+        adjusted_logits = torch.where(action_mask, logits, torch.tensor(-np.inf))
         distribution = torch.distributions.Categorical(logits = adjusted_logits)
         action = distribution.sample()
         return action.item(), distribution.log_prob(action), distribution.entropy()
