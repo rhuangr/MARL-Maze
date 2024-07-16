@@ -9,19 +9,16 @@ class Agent:
         self.brain = PPO.PPO(maze=maze)
         self.direction = 2 # direction facing value at index of ['north', 'east, 'south', 'west']
         self.tag = 2
-
-        self.min_x_visited = x
-        self.max_x_visited = x
-        self.min_y_visited = y
-        self.max_y_visited = y 
-        
+                
         # agent's estimate of dimensions W x H of the maze
         self.width_estimate = 1
         self.height_estimate = 1
+        self.reset_estimates()
         
     def get_action(self, obs, mask):
         action, prob , _ = self.brain.get_action(obs, mask)
         return action, math.exp(prob)
+
     
     def estimate_maze(self, direction):
         
@@ -53,3 +50,8 @@ class Agent:
         return updated
         
         # print(f"w estim: {self.width_estimate}, h estim: {self.height_estimate}")
+    def reset_estimates(self):
+        self.min_x_visited = self.x
+        self.max_x_visited = self.x
+        self.min_y_visited = self.y
+        self.max_y_visited = self.y

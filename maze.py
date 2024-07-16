@@ -3,8 +3,6 @@ import random
 import time
 from agent import Agent
 
-random.seed(142341)
-
 # Initialize Pygame
 pygame.init()
 
@@ -20,7 +18,7 @@ CELL_SIZE = 40
 AGENT_RADIUS = CELL_SIZE/2.2
 AGENT_EYE_RADIUS = AGENT_RADIUS//4
 
-TIMESTEP_LENGTH = 0.07 # USED WHEN RENDERING THE GAME
+TIMESTEP_LENGTH = 0.11 # USED WHEN RENDERING THE GAME
 AGENT_VISION_RANGE = 4
 
 ACTIONS = ['forward', 'right', 'backward', 'left']
@@ -56,7 +54,7 @@ class Maze:
         self.last_timestep = time.time()
 
         # maze generation parameters
-        self.rand_gen = rand_sizes
+        self.rand_sizes = rand_sizes
         self.rand_range = rand_range
         self.rand_start = rand_start
         self.hardcore=hardcore
@@ -66,13 +64,14 @@ class Maze:
     def reset(self):
         self.current_t = 0
 
-        if self.rand_gen == True:
+        if self.rand_sizes == True:
             self.height = random.randint(self.rand_range[0], self.rand_range[1]) * 2 - 1
             self.width = random.randint(self.rand_range[0], self.rand_range[1]) * 2 - 1
 
         self.maze = [[1 for i in range(self.width)] for j in range(self.height)]
         self.build_maze()
         self.agent.x, self.agent.y = self.start
+        self.agent.reset_estimates()
         return self.get_observations()
     
     def set_agents(self):
@@ -270,22 +269,19 @@ class Maze:
             self.agent.x = new_x
             self.agent.y = new_y
             self.agent.direction = adjusted_action
-            self.agent.estimate_maze(adjusted_action)
+            updated = self.agent.estimate_maze(adjusted_action)
             # print(f"facing: {DIRECTIONS[self.agent.direction]}, action taken: {action} and {ACTIONS[adjusted_action]}, new x,y: {self.agent.x},{self.agent.y}")
         
-        # reward function
+        # reward function and done logic
+        reward = 0
+        done = False
         if (self.agent.x, self.agent.y) == self.end:
             reward = 1
-        elif self.maze[self.agent.y][self.agent.x] == 0:
-            reward = 0.005
-        else:
-            reward = 0
-
-        # done/ truncated logic
-        if (self.agent.x, self.agent.y) == self.end or self.current_t >= self.max_timestep:
             done = True
-        else:
-            done = False
+        elif updated:
+            reward = 0.01
+        if self.current_t >= self.max_timestep:
+            done = True
 
         observations, action_mask = self.get_observations()
         return observations, action_mask, reward, done
@@ -310,11 +306,15 @@ class Maze:
         observations.append(on_marked_square)
         observations.append(timestep)
         
-        relative_x = 0 if self.agent.width_estimate < 5 else (self.agent.x - self.agent.min_x_visited - 1) / self.agent.width_estimate
-        relative_y = 0 if self.agent.height_estimate < 5 else (self.agent.max_y_visited - self.agent.y) / self.agent.height_estimate
+        relative_x = 0 if self.agent.width_estimate < 4 else (self.agent.x - self.agent.min_x_visited) / self.agent.width_estimate
+        relative_y = 0 if self.agent.height_estimate < 4 else (self.agent.max_y_visited - self.agent.y) / self.agent.height_estimate
         observations.append(relative_x)
         observations.append(relative_y)
-        
+        # print(f"dead ends: {dead_ends}, mask: {action_mask}")
+        # print(f"marks: {visible_marked}, unmark: {visible_unmarked}")
+        # print(f"end vis: {visible_end}")
+        # print(f"rel x: {relative_x}, rel y: {relative_y}")
+        # print()
         return observations, action_mask
 
     # returns the binary representation of a direction that the agent is facing
@@ -329,22 +329,22 @@ class Maze:
         
 
         for i in range(len(DELTAS)):
-            for j in range(AGENT_VISION_RANGE - 1):
-                x_dif, y_dif = DELTAS[i][0] * (j+1), DELTAS[i][1] * (j+1)
-                new_x, new_y = self.agent.x + x_dif, self.agent.y + y_dif
-
-                if new_x < 0 or new_x >= self.width or new_y < 0 or new_y >= self.height:
+            next_x, next_y = self.agent.x, self.agent.y
+            x_dif, y_dif = DELTAS[(i+self.agent.direction)%4][0], DELTAS[(i+self.agent.direction)%4][1]
+            for j in range(AGENT_VISION_RANGE):
+                next_x, next_y = next_x + x_dif, next_y + y_dif
+                if next_x < 0 or next_x >= self.width or next_y < 0 or next_y >= self.height:
                     break
 
-                new_cell = self.maze[new_y][new_x]
+                new_cell = self.maze[next_y][next_x]
 
-                if (new_x, new_y) == self.end:
+                if (next_x, next_y) == self.end:
                     visible_end[i] = 1
 
                 if new_cell == mark:
                     visible_marked_squares[i] = 1
 
-                if new_cell == 1:
+                if new_cell == 0:
                     visible_unmarked_squares[i] = 1
 
                 if new_cell == 1:
@@ -373,10 +373,12 @@ class Maze:
             # if there is a dead end in direction i, then continue to next direction
             if dead_ends[direction] == 1:
                     continue
-            
+                
+            next_x, next_y = self.agent.x, self.agent.y
+            x_dif, y_dif = DELTAS[(direction+self.agent.direction)%4][0], DELTAS[(direction+self.agent.direction)%4][1]
             # simulates vision, by checking if next cells in the current direction are dead ends
             for j in range(AGENT_VISION_RANGE):
-                next_x, next_y = self.agent.x + DELTAS[((direction+self.agent.direction)%4)][0] * (j+1), self.agent.y + DELTAS[(direction+self.agent.direction)%4][1] * (j+1)
+                next_x, next_y = next_x + x_dif, next_y + y_dif
                 neighbors = self.get_path_neighbors((next_x, next_y))
                 
                 # if the cell we expand in has a turn, it is not a dead end
@@ -459,5 +461,5 @@ class Maze:
         pygame.quit()
 
 if __name__ == "__main__":
-    maze = Maze(rand_start=False)
+    maze = Maze(rand_start=True, rand_sizes=True, rand_range=[8,12], hardcore=True)
     maze.display_policy()
