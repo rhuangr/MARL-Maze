@@ -306,6 +306,8 @@ class Maze:
         observations.append(on_marked_square)
         observations.append(timestep)
         
+        # since this project relies on agents not knowing the layout of the maze
+        # this feature represents the agent's hunch for his current position x,y
         relative_x = 0 if self.agent.width_estimate < 4 else (self.agent.x - self.agent.min_x_visited) / self.agent.width_estimate
         relative_y = 0 if self.agent.height_estimate < 4 else (self.agent.max_y_visited - self.agent.y) / self.agent.height_estimate
         observations.append(relative_x)
@@ -315,6 +317,7 @@ class Maze:
         # print(f"end vis: {visible_end}")
         # print(f"rel x: {relative_x}, rel y: {relative_y}")
         # print()
+        print(observations)
         return observations, action_mask
 
     # returns the binary representation of a direction that the agent is facing
