@@ -89,7 +89,7 @@ class Maze:
             reward = 1
             done = True
         elif updated_estimates:
-            reward = 0.03        
+            reward = 0.01       
         if self.current_t >= self.max_timestep:
             done = True
 
@@ -287,9 +287,10 @@ class Maze:
         self.draw_maze()
         running = True
         is_moving = False
-        
+        curent_focus = None
         def update_env():
-                nonlocal obs, mask
+                
+                nonlocal obs, mask, curent_focus
                 action, prob = self.agent.get_action([obs], mask)
                 # print(f"agent took action: {ACTIONS[action % 4]}, prob: {prob}")
                 obs, mask, reward, done = self.step(action)
@@ -299,6 +300,11 @@ class Maze:
                     obs, mask = self.reset()
                     self.set_screen()
                     self.draw_maze()  
+
+                print(self.agent.attention_scores)
+                if self.agent.current_focus != curent_focus:
+                    print(f"current focus: {self.agent.current_focus}")
+                    curent_focus = self.agent.current_focus
 
         while running:
             current_time = time.time()
@@ -323,5 +329,5 @@ class Maze:
         pygame.quit()
 
 if __name__ == "__main__":
-    maze = Maze(rand_start=True, rand_sizes=True, rand_range=[3,4], hardcore=False)
+    maze = Maze(rand_start=True, rand_sizes=True, rand_range=[4,10], hardcore=True)
     maze.display_policy()

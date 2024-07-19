@@ -64,6 +64,9 @@ class PPO():
                     current_log_prob = self.get_log_probs(m_obs, m_actions, m_masks)
                     log_prob_ratios = torch.exp(current_log_prob - m_log_probs)
 
+                    # if start == 0 and update == 0:
+                    #     print(log_prob_ratios)
+
                     surrogate1 = log_prob_ratios * m_advantage
                     surrogate2 = torch.clamp(log_prob_ratios, 1-self.clip, 1+ self.clip) * m_advantage
                     
@@ -102,7 +105,7 @@ class PPO():
         while True:
             batch_obs.append(obs)
             batch_masks.append(action_mask)
-            action, log_prob, entropy, _ = self.get_action(obs, action_mask)
+            action, log_prob, entropy, _, _= self.get_action(obs, action_mask)
             obs, action_mask, reward,done = self.maze.step(action)
             # print(f"action: {action}, prob: {torch.exp(log_prob)}")
             episode_rew.append(reward)
@@ -144,7 +147,7 @@ class PPO():
         distribution = torch.distributions.Categorical(logits=adjusted_logits)
         action = distribution.sample()
         log_prob = distribution.log_prob(action)
-        return action.item(), log_prob, distribution.entropy(), np.argmax(attention_scores)
+        return action.item(), log_prob, distribution.entropy(), torch.argmax(attention_scores), attention_scores
     
     def get_state_values(self, batch_obs):
         # batch_obs is a nested array [[obs1], [obs2], ...]
@@ -188,7 +191,7 @@ if __name__ == "__main__":
     maze = maze.Maze()
     brain = PPO(maze=maze)
     obs, mask = maze.reset()
-    action, logprob, _, _ = brain.get_action(obs, torch.as_tensor(mask, dtype=torch.bool))
+    action, logprob, _, _, _ = brain.get_action(obs, torch.as_tensor(mask, dtype=torch.bool))
     logporbbb = brain.get_log_probs(obs, torch.as_tensor(action, dtype=torch.float32), torch.as_tensor(mask, dtype=torch.bool))
             
     print(action)

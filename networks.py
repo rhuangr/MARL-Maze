@@ -9,24 +9,25 @@ OBS_VECTOR_SIZE = 23
 EMBEDDING_DIM = 10
 
 class simple_nn(nn.Module):
-    def __init__(self, layer_sizes, activation=nn.ReLU):
+    def __init__(self, layer_sizes, activation=nn.ReLU, attention_layers=2):
         super(simple_nn, self).__init__()
         self.projection = Projection()
-        self.attention = Attention()
+        self.attention = Attention(attention_layers)
         self.layers = nn.ModuleList()
         self.activation = activation
 
-
+        # dynamic layer creation
         self.layers.append(nn.Linear(FEATURE_AMOUNT * EMBEDDING_DIM, layer_sizes[0]))
+        self.layers.append(nn.LayerNorm(layer_sizes[0], bias=False))
         for i in range(len(layer_sizes) - 1):
             self.layers.append(nn.Linear(layer_sizes[i], layer_sizes[i+1]))
+            self.layers.append(nn.LayerNorm(layer_sizes[i+1]))
         self.optimizer = Adam(self.parameters(), lr = 0.0001)
 
     def forward(self, x):
         x = torch.as_tensor(x, dtype=torch.float32).reshape(-1, 23)
         x = self.projection(x)
         x, attention_scores = self.attention(x)
-        attention_scores = [3]
         for i in range(len(self.layers) - 1):
             x = self.activation()(self.layers[i](x))
         x = self.layers[-1](x)
@@ -35,38 +36,44 @@ class simple_nn(nn.Module):
 # transforms individual features into embeddings of equal size, then passed into attention layer
 class Projection(nn.Module):
 
-    def __init__(self, feature_dims=FEATURE_DIMS, embedding_dim=EMBEDDING_DIM, activation=nn.ReLU):
+    def __init__(self,activation=nn.ReLU):
         super(Projection, self).__init__()
-        self.feature_dims = feature_dims
-        self.embedding_dim = embedding_dim
         self.activation = activation
-        self.layers = nn.ModuleList([nn.Linear(dim, embedding_dim) for dim in feature_dims])
+        self.layers = nn.ModuleList([nn.Linear(dim, EMBEDDING_DIM) for dim in FEATURE_DIMS])
 
     def forward(self, input):
         index = 0
         observations = []
-        for i in range(len(self.feature_dims)):
-            embedding = self.layers[i](input[:, index:index+self.feature_dims[i]])
+        for i in range(len(FEATURE_DIMS)):
+            embedding = self.layers[i](input[:, index:index+FEATURE_DIMS[i]])
             embedding = self.activation()(embedding)
             observations.append(embedding)
         return torch.cat(observations, dim=1)
 
 class Attention(nn.Module):
 
-    def __init__(self, input_size=FEATURE_AMOUNT*EMBEDDING_DIM, middle_size=64, activation=nn.Sigmoid):
+    def __init__(self, layers, middle_size=64, activation=nn.ReLU, temperature=2):
         super(Attention, self).__init__()
-        self.input_size = input_size
-        self.attention = nn.Sequential(
-            nn.Linear(input_size, middle_size),
-            activation(),
-            nn.Linear(middle_size, FEATURE_AMOUNT),
-            nn.Softmax(dim=-1)
-        )
+        self.temperature = temperature
+        self.layers = nn.ModuleList()
+        self.activation = activation
+
+        # dynamic layer creation
+        self.layers.append(nn.Linear(FEATURE_AMOUNT*EMBEDDING_DIM, middle_size))
+        for i in range(layers - 2):
+            self.layers.append(nn.Linear(middle_size,middle_size))
+        self.layers.append(nn.Linear(middle_size, FEATURE_AMOUNT))
 
     def forward(self, input):
-        attention_scores = self.attention(input)
+        
+        logits = input
+        for i in range(len(self.layers)):
+            logits = self.layers[i](logits)
+            self.activation()(logits)
+        attention_scores = nn.Softmax(dim=-1)(logits/self.temperature)
+
         input = input.reshape(-1, FEATURE_AMOUNT, EMBEDDING_DIM)
-        weighted_features = torch.einsum("ijk,ij->ijk",input, attention_scores).reshape(-1,FEATURE_AMOUNT*EMBEDDING_DIM)
+        weighted_features = torch.einsum("ijk,ij->ijk", input, attention_scores).reshape(-1,FEATURE_AMOUNT*EMBEDDING_DIM)
         return weighted_features, attention_scores
     
 if __name__ == "__main__":
@@ -74,6 +81,4 @@ if __name__ == "__main__":
          0., 0., 0., 0.]]), dtype=torch.float32)
     y = torch.as_tensor([[2,3],[3,4],[4,5]], dtype=torch.float32)
     z = torch.as_tensor(([[1,2,3],[1,2,3]],[[1,2,3],[1,2,3]],[[1,2,3],[1,2,3]]), dtype=torch.float32)
-    
-    
     

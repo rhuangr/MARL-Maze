@@ -39,18 +39,17 @@ class Agent:
         self.current_focus = None
         
     def get_action(self, obs, mask):
-        action, prob , _, focus_index = self.brain.get_action(obs, mask)
+        action, prob , _, focus_index, attention_scores = self.brain.get_action(obs, mask)
         self.current_focus = FEATURE_NAMES[focus_index]
+        self.attention_scores = attention_scores
         # print(self.current_focus)
         return action, math.exp(prob)
     
     def move(self, x, y, direction):
-        x_dif, y_dif = DELTAS[direction]
         self.x, self.y = x, y
         self.direction = direction
         return self.estimate_maze(direction)
     
-
     def get_observations(self):
         
         # start building the observation vector
@@ -78,7 +77,7 @@ class Agent:
         # start building the action mask
         action_mask = []
         mark_action_mask = True if on_marked_cell == 0 else False
-        break_action_mask = [False, False, False, False] if self.breaks_remaining == 0 else walls
+        break_action_mask = [False, False, False, False] #if self.breaks_remaining == 0 else walls
         break_action_mask[2] = mark_action_mask
         action_mask.extend(move_action_mask)
         action_mask.extend(break_action_mask)
