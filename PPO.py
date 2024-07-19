@@ -1,4 +1,4 @@
-from neural_net import simple_nn
+from networks import simple_nn
 import torch
 import numpy as np
 import multiprocessing
@@ -8,8 +8,8 @@ ACTOR_PATH = 'actor.pth'
 CRITIC_PATH = 'critic.pth'
 
 class PPO():
-    def __init__(self, maze, epochs = 5000, batch_size = 6000,
-                 discount_rate = 0.99, updates_per_batch = 5, mbatch_size = 64):
+    def __init__(self, maze, epochs=5000, batch_size=6000, discount_rate=0.99,
+                  updates_per_batch=5, mbatch_size=64, clip=0.2, beta=0.01, max_grad=0.5):
         
         self.maze = maze
         self.input_size = self.maze.observation_space
@@ -21,10 +21,10 @@ class PPO():
         self.batch_size = batch_size
         self.discount_rate = discount_rate
         self.updates_per_batch = updates_per_batch
-        self.clip = 0.2
-        self.beta = 0.01
-        self.mbatch_size = 64
-        self.max_grad = 0.5
+        self.mbatch_size = mbatch_size
+        self.clip = clip    
+        self.beta = beta
+        self.max_grad = max_grad
 
         self.load_parameters()
 
@@ -47,6 +47,7 @@ class PPO():
                     end = start + self.mbatch_size
                     mbatch_indices = index_list[start:end]
 
+                    # minibatch variables
                     m_obs = batch_obs[mbatch_indices]
                     m_actions = batch_actions[mbatch_indices]
                     m_log_probs = batch_log_probs[mbatch_indices]
@@ -97,7 +98,7 @@ class PPO():
 
         while True:
             batch_obs.append(obs)
-            action, log_prob, entropy = self.get_action(obs, action_mask)
+            action, log_prob, entropy, _ = self.get_action(obs, action_mask)
             obs, action_mask, reward,done = self.maze.step(action)
             # print(f"action: {action}, prob: {torch.exp(log_prob)}")
             episode_rew.append(reward)
@@ -126,20 +127,21 @@ class PPO():
 
     def get_action(self, obs, action_mask):
         action_mask = torch.as_tensor(action_mask, dtype=torch.bool)
-        logits = self.actor(obs)
+        logits, attention_scores = self.actor(obs)
         adjusted_logits = torch.where(action_mask, logits, torch.tensor(-np.inf))
         distribution = torch.distributions.Categorical(logits = adjusted_logits)
         action = distribution.sample()
-        return action.item(), distribution.log_prob(action), distribution.entropy()
+        return action.item(), distribution.log_prob(action), distribution.entropy(), torch.argmax(attention_scores)
         
     def get_log_probs(self, batch_obs, batch_actions):
-        logits = self.actor(batch_obs)
+        logits, _ = self.actor(batch_obs)
         distribution = torch.distributions.Categorical(logits = logits)
         return distribution.log_prob(torch.as_tensor(batch_actions, dtype=torch.float32))
     
     def get_state_values(self, batch_obs):
         # batch_obs is a nested array [[obs1], [obs2], ...]
-        return self.critic(batch_obs).squeeze()
+        batch_values, _ = self.critic(batch_obs)
+        return batch_values.squeeze()
 
 
     def get_rtgs(self, batch_rew):
