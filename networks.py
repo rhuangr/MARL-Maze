@@ -15,18 +15,18 @@ class simple_nn(nn.Module):
         self.attention = Attention()
         self.layers = nn.ModuleList()
         self.activation = activation
-        self.optimizer = Adam(self.parameters(), lr = 0.0001)
+
 
         self.layers.append(nn.Linear(FEATURE_AMOUNT * EMBEDDING_DIM, layer_sizes[0]))
         for i in range(len(layer_sizes) - 1):
             self.layers.append(nn.Linear(layer_sizes[i], layer_sizes[i+1]))
-            # self.activations.append(activation)
-
+        self.optimizer = Adam(self.parameters(), lr = 0.0001)
 
     def forward(self, x):
         x = torch.as_tensor(x, dtype=torch.float32).reshape(-1, 23)
         x = self.projection(x)
         x, attention_scores = self.attention(x)
+        attention_scores = [3]
         for i in range(len(self.layers) - 1):
             x = self.activation()(self.layers[i](x))
         x = self.layers[-1](x)

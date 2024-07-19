@@ -14,7 +14,7 @@ RED =  pygame.Color("red")
 PALE_RED = (255, 100, 150)
 GREEN = (0, 255, 0)
 
-CELL_SIZE = 20
+CELL_SIZE = 40
 AGENT_RADIUS = CELL_SIZE/2.2
 AGENT_EYE_RADIUS = AGENT_RADIUS//4
 
@@ -33,7 +33,7 @@ class Maze:
         self.shortest_path = []
         self.shortest_path_len = 0
 
-        self.observation_space = 22
+        self.observation_space = 23
         self.action_space = 8
         self.max_timestep = max_timestep
 
@@ -79,9 +79,10 @@ class Maze:
             new_x, new_y = agent_.x + x_dif, agent_.y + y_dif
             if action < 4:
                 updated_estimates = agent_.move(new_x, new_y, direction)
-            else:
-                # break wall into path
+            elif agent_.breaks_remaining > 0:
+                # break wall
                 self.layout[new_y][new_x] = 0
+                agent_.breaks_remaining -= 1
 
         # reward function and done logic
         if (self.agent.x, self.agent.y) == self.end:
@@ -322,5 +323,5 @@ class Maze:
         pygame.quit()
 
 if __name__ == "__main__":
-    maze = Maze(rand_start=True, rand_sizes=True, rand_range=[8,12], hardcore=True)
+    maze = Maze(rand_start=True, rand_sizes=True, rand_range=[3,4], hardcore=False)
     maze.display_policy()

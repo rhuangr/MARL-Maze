@@ -55,7 +55,7 @@ class Agent:
         
         # start building the observation vector
         direction = self.get_direction_feature()
-        dead_ends, move_action_mask, break_action_mask = self.get_dead_ends()
+        dead_ends, move_action_mask, walls = self.get_dead_ends()
         visible_marked, visible_unmarked, visible_end = self.get_visibility_features()
         on_marked_cell = 1 if self.maze.layout[self.y][self.x] == self.tag else 0
         breaks_remaining = self.breaks_remaining/self.max_breaks
@@ -78,6 +78,7 @@ class Agent:
         # start building the action mask
         action_mask = []
         mark_action_mask = True if on_marked_cell == 0 else False
+        break_action_mask = [False, False, False, False] if self.breaks_remaining == 0 else walls
         break_action_mask[2] = mark_action_mask
         action_mask.extend(move_action_mask)
         action_mask.extend(break_action_mask)

@@ -1,8 +1,11 @@
 from networks import simple_nn
+import maze
 import torch
 import numpy as np
 import multiprocessing
 import os
+
+torch.manual_seed(3234)
 
 ACTOR_PATH = 'actor.pth'
 CRITIC_PATH = 'critic.pth'
@@ -30,7 +33,7 @@ class PPO():
 
     def train(self):
         for i in range(self.epochs):
-            batch_obs, batch_actions, batch_log_probs, batch_rew, batch_shortest_paths, episode_lens, entropies = self.get_batch()
+            batch_obs, batch_actions, batch_log_probs, batch_rew, batch_shortest_paths, episode_lens, batch_entropies, batch_masks= self.get_batch()
             print(f"Epoch{i+1}")
             for i in range(len(episode_lens)):
                 print(f"Run {i+1}: exit time:{episode_lens[i]}, shortest path length: {batch_shortest_paths[i]}")
@@ -41,8 +44,7 @@ class PPO():
             index_list = np.arange(len(batch_obs))
             np.random.shuffle(index_list)
 
-            for _ in range(self.updates_per_batch):
-
+            for update in range(self.updates_per_batch):
                 for start in range(0, self.batch_size, self.mbatch_size):
                     end = start + self.mbatch_size
                     mbatch_indices = index_list[start:end]
@@ -54,11 +56,12 @@ class PPO():
                     m_rtgs = rtgs[mbatch_indices]
                     m_state_values = self.get_state_values(m_obs)
                     m_advantage = m_rtgs - m_state_values.detach()
-                    m_entropies = entropies[mbatch_indices]
+                    m_masks = batch_masks[mbatch_indices]
+                    m_entropies = batch_entropies[mbatch_indices]
 
                     # normalize advantage to reduce variance
                     m_advantage = (m_advantage - torch.mean(m_advantage))/ torch.std(m_advantage) + 1e-10
-                    current_log_prob = self.get_log_probs(m_obs, m_actions)
+                    current_log_prob = self.get_log_probs(m_obs, m_actions, m_masks)
                     log_prob_ratios = torch.exp(current_log_prob - m_log_probs)
 
                     surrogate1 = log_prob_ratios * m_advantage
@@ -68,17 +71,16 @@ class PPO():
                     actor_loss = -torch.mean(torch.min(surrogate1, surrogate2))
                     actor_loss = actor_loss - self.beta * torch.mean(torch.as_tensor(m_entropies))
                     self.actor.optimizer.zero_grad()
-                    torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad)
+                    actor_grad_norm = torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad)
                     actor_loss.backward()
                     self.actor.optimizer.step()
 
-                    # critic loss calculations
                     critic_loss = torch.mean(torch.pow((m_rtgs - m_state_values), 2))
                     self.critic.optimizer.zero_grad()
-                    torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad)
+                    critic_grad_norm = torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad)
                     critic_loss.backward()
                     self.critic.optimizer.step()
-
+                            
             self.save_parameters()
     
     def get_batch(self):
@@ -89,6 +91,7 @@ class PPO():
         episode_lens = []
         batch_log_probs = []
         batch_shortest_paths = []
+        batch_masks = []
         batch_entropies = []
 
         # we need seperate arrays for episode rewards to aid reward-to-go calculations
@@ -98,6 +101,7 @@ class PPO():
 
         while True:
             batch_obs.append(obs)
+            batch_masks.append(action_mask)
             action, log_prob, entropy, _ = self.get_action(obs, action_mask)
             obs, action_mask, reward,done = self.maze.step(action)
             # print(f"action: {action}, prob: {torch.exp(log_prob)}")
@@ -122,21 +126,25 @@ class PPO():
         batch_act = torch.as_tensor(batch_act, dtype= torch.float32)
         batch_log_probs = torch.as_tensor(batch_log_probs, dtype= torch.float32)
         batch_entropies = torch.as_tensor(batch_entropies, dtype= torch.float32)
+        batch_masks = torch.as_tensor(batch_masks, dtype=torch.bool)
 
-        return batch_obs, batch_act, batch_log_probs, batch_rew, batch_shortest_paths, episode_lens, batch_entropies
+        return batch_obs, batch_act, batch_log_probs, batch_rew, batch_shortest_paths, episode_lens, batch_entropies, batch_masks
+    
+    def get_log_probs(self, batch_obs, batch_actions, batch_masks):
+        logits, _ = self.actor(batch_obs)
+        adjusted_logits = torch.where(batch_masks, logits, torch.tensor(-float('inf')))
+        distribution = torch.distributions.Categorical(logits=adjusted_logits)
+        log_probs = distribution.log_prob(batch_actions)
+        return log_probs
 
     def get_action(self, obs, action_mask):
         action_mask = torch.as_tensor(action_mask, dtype=torch.bool)
         logits, attention_scores = self.actor(obs)
-        adjusted_logits = torch.where(action_mask, logits, torch.tensor(-np.inf))
-        distribution = torch.distributions.Categorical(logits = adjusted_logits)
+        adjusted_logits = torch.where(action_mask, logits, torch.tensor(-float('inf')))
+        distribution = torch.distributions.Categorical(logits=adjusted_logits)
         action = distribution.sample()
-        return action.item(), distribution.log_prob(action), distribution.entropy(), torch.argmax(attention_scores)
-        
-    def get_log_probs(self, batch_obs, batch_actions):
-        logits, _ = self.actor(batch_obs)
-        distribution = torch.distributions.Categorical(logits = logits)
-        return distribution.log_prob(torch.as_tensor(batch_actions, dtype=torch.float32))
+        log_prob = distribution.log_prob(action)
+        return action.item(), log_prob, distribution.entropy(), np.argmax(attention_scores)
     
     def get_state_values(self, batch_obs):
         # batch_obs is a nested array [[obs1], [obs2], ...]
@@ -174,5 +182,18 @@ class PPO():
             self.critic.load_state_dict(torch.load(CRITIC_PATH))
     
     
+
+
+if __name__ == "__main__":
+    maze = maze.Maze()
+    brain = PPO(maze=maze)
+    obs, mask = maze.reset()
+    action, logprob, _, _ = brain.get_action(obs, torch.as_tensor(mask, dtype=torch.bool))
+    logporbbb = brain.get_log_probs(obs, torch.as_tensor(action, dtype=torch.float32), torch.as_tensor(mask, dtype=torch.bool))
+            
+    print(action)
+    print(logporbbb)
+    print(logprob)
+
 
 
