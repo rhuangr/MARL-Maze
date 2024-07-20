@@ -12,9 +12,9 @@ FEATURE_NAMES = ['direction', 'dead ends','visible marked cell', 'visible unmark
                   'visible_end', 'on marked cell', 'breaks_remaining', 'timestep', 'relative x', 'relative y']
 
 class Agent:
-    def __init__(self, x, y, color, maze, breaks=2):
-        self.x = x
-        self.y = y
+    def __init__(self, color, maze, breaks=2):
+        self.x = 0
+        self.y = 0
         self.maze = maze
         self.color = color      
         self.brain = PPO.PPO(maze=maze)
@@ -55,6 +55,7 @@ class Agent:
         # start building the observation vector
         direction = self.get_direction_feature()
         dead_ends, move_action_mask, walls = self.get_dead_ends()
+        # print(dead_ends)
         visible_marked, visible_unmarked, visible_end = self.get_visibility_features()
         on_marked_cell = 1 if self.maze.layout[self.y][self.x] == self.tag else 0
         breaks_remaining = self.breaks_remaining/self.max_breaks

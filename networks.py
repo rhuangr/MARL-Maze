@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 
+torch.manual_seed(3)
 # represents the dimensions of the feature vectors
 FEATURE_DIMS = [2, 4, 4, 4, 4, 1, 1, 1, 1, 1]
 FEATURE_AMOUNT = len(FEATURE_DIMS)
@@ -18,19 +19,31 @@ class simple_nn(nn.Module):
 
         # dynamic layer creation
         self.layers.append(nn.Linear(FEATURE_AMOUNT * EMBEDDING_DIM, layer_sizes[0]))
-        self.layers.append(nn.LayerNorm(layer_sizes[0], bias=False))
-        for i in range(len(layer_sizes) - 1):
+        # self.layers.append(nn.LayerNorm(layer_sizes[0]))
+        
+        for i in range(len(layer_sizes)-1):
             self.layers.append(nn.Linear(layer_sizes[i], layer_sizes[i+1]))
-            self.layers.append(nn.LayerNorm(layer_sizes[i+1]))
+            # self.layers.append(nn.LayerNorm(layer_sizes[i+1]))
+            
         self.optimizer = Adam(self.parameters(), lr = 0.0001)
-
+        
     def forward(self, x):
         x = torch.as_tensor(x, dtype=torch.float32).reshape(-1, 23)
         x = self.projection(x)
         x, attention_scores = self.attention(x)
+        
         for i in range(len(self.layers) - 1):
             x = self.activation()(self.layers[i](x))
         x = self.layers[-1](x)
+        
+        # code for layer norm
+        # for i in range((len(self.layers)//2)-1):
+        #     x = self.layers[i*2](x)
+        #     x = self.layers[i*2+1](x)
+        #     x = self.activation()(x)
+        # x = self.layers[-2](x)
+        # x = self.activation()(x)
+
         return x, attention_scores
 
 # transforms individual features into embeddings of equal size, then passed into attention layer
@@ -73,7 +86,7 @@ class Attention(nn.Module):
         attention_scores = nn.Softmax(dim=-1)(logits/self.temperature)
 
         input = input.reshape(-1, FEATURE_AMOUNT, EMBEDDING_DIM)
-        weighted_features = torch.einsum("ijk,ij->ijk", input, attention_scores).reshape(-1,FEATURE_AMOUNT*EMBEDDING_DIM)
+        weighted_features = torch.einsum("ijk,ij->ijk", input, 1+attention_scores).reshape(-1,FEATURE_AMOUNT*EMBEDDING_DIM)
         return weighted_features, attention_scores
     
 if __name__ == "__main__":
@@ -82,3 +95,7 @@ if __name__ == "__main__":
     y = torch.as_tensor([[2,3],[3,4],[4,5]], dtype=torch.float32)
     z = torch.as_tensor(([[1,2,3],[1,2,3]],[[1,2,3],[1,2,3]],[[1,2,3],[1,2,3]]), dtype=torch.float32)
     
+    x = nn.Linear(22,22)(x)
+    print(x)
+    x = nn.LayerNorm(22)(x)
+    print(x)

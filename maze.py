@@ -2,6 +2,7 @@ import pygame
 import random
 import time
 import agent
+
 random.seed(3)
 # Initialize Pygame
 pygame.init()
@@ -27,18 +28,19 @@ class Maze:
         # maze characteristics
         self.width = default_size[0] * 2 - 1
         self.height = default_size[1] * 2 - 1
+        
+        # these variables will be initialized upon calling self.reset() which resets the maze
         self.layout = None
-        self.start = (0,0)
+        self.start = None
         self.end = None
-        self.shortest_path = []
-        self.shortest_path_len = 0
+        self.shortest_path = None
+        self.shortest_path_len = None
 
         self.observation_space = 23
         self.action_space = 8
         self.max_timestep = max_timestep
 
-        self.agent = None
-        self.set_agents()
+        self.agent = agent.Agent(RED, self)
         # self.agent = Agent(16, 10, RED, self)
 
         self.last_timestep = time.time()
@@ -66,8 +68,6 @@ class Maze:
     def step(self, action):
         self.current_t += 1
         updated_estimates = False
-        reward = 0
-        done = False
 
         # action logic
         agent_ = self.agent
@@ -85,11 +85,13 @@ class Maze:
                 agent_.breaks_remaining -= 1
 
         # reward function and done logic
+        reward = 0
+        done = False
         if (self.agent.x, self.agent.y) == self.end:
             reward = 1
             done = True
         elif updated_estimates:
-            reward = 0.01       
+            reward = 0.009       
         if self.current_t >= self.max_timestep:
             done = True
 
@@ -104,19 +106,14 @@ class Maze:
         self.agent.direction = 2
 
     def build_maze(self):
-        
-        # if random start mode, the start is chosen randomly instead of default 0,0
-        if self.rand_start == True:
-            start_x = random.randint(0, (self.width - 1)//2) * 2
-            start_y = random.randint(0, (self.height - 1)//2) * 2
-            self.start = (start_x, start_y)
+        self.set_start()
         
         # building logic starts here
         stack = [self.start]
         while stack:
             current_cell = stack[-1]
             self.layout[current_cell[1]][current_cell[0]] = 0
-            neighbors = self.get_wall_neighbors(current_cell)
+            neighbors = self.get_neighbors(current_cell)
 
             # if there are valid neighbors, we expand the maze in the direction of the randomly chosen neighbor
             if neighbors:
@@ -165,34 +162,42 @@ class Maze:
         #     count += lists.count(0)
         # print(f"number of paths: {count} and shortest path length: {self.shortest_path_len}")
 
-    def get_wall_neighbors(self, cell):
+    def get_neighbors(self, cell):
         x, y = cell
         neighbors = []
 
         for x_dif, y_dif in agent.DELTAS:
             neighbor_x, neighbor_y = x + x_dif*2, y + y_dif*2
 
-            if (self.is_valid_cell(neighbor_x, neighbor_y) and self.layout[neighbor_y][neighbor_x]):
+            if (self.is_valid_cell(neighbor_x, neighbor_y) and self.layout[neighbor_y][neighbor_x] == 1):
                 neighbors.append((neighbor_x, neighbor_y))
 
         return neighbors
-
-    def set_end(self):
-        end = random.randint(0,1)
-        if end == 0:
-            y = self.height - 1
-            while True:
-                x = random.randint(0, self.width - 1)
-                if self.layout[y][x] == 0:
-                    self.end = (x, y)
-                    break
+    
+    def set_start(self):
+        # if random start mode, the start is chosen randomly instead of default 0,0
+        if self.rand_start == True:
+            start_x = random.randint(0, (self.width - 1)//2) * 2
+            start_y = random.randint(0, (self.height - 1)//2) * 2
+            self.start = (start_x, start_y)
+            
         else:
-            x = self.width - 1
-            while True:
-                y = random.randint(0, self.height - 1)
-                if self.layout[y][x] == 0:
-                    self.end = (x, y)
-                    break
+            self.start = (self.width//2,0) if self.width//2%2 == 0 else (self.width//2-1, 0)
+            
+    def set_end(self):
+        coin = random.randint(0,1)
+        x = 0 if coin == 0 else self.width-1
+        count = 1
+        while True:
+            count+=1
+            # print(count)
+            y = random.randint(0, self.height - 1)
+            if self.layout[y][x] == 0:
+                self.end = (x, y)
+                break
+            
+        # code for set end which sets in any outer edge of the maze
+        
         # while True:
         #     end_x = random.randint(0, self.width - 1)
         #     end_y = random.randint(0, self.height - 1)
@@ -287,13 +292,15 @@ class Maze:
         self.draw_maze()
         running = True
         is_moving = False
-        curent_focus = None
+        current_focus = None
+        
         def update_env():
                 
-                nonlocal obs, mask, curent_focus
+                nonlocal obs, mask, current_focus
                 action, prob = self.agent.get_action([obs], mask)
-                # print(f"agent took action: {ACTIONS[action % 4]}, prob: {prob}")
+                print(f"prob of action:{action} is {prob}")
                 obs, mask, reward, done = self.step(action)
+                current_focus = self.agent.current_focus
                 self.draw_maze()
 
                 if done: 
@@ -301,10 +308,10 @@ class Maze:
                     self.set_screen()
                     self.draw_maze()  
 
-                print(self.agent.attention_scores)
-                if self.agent.current_focus != curent_focus:
-                    print(f"current focus: {self.agent.current_focus}")
-                    curent_focus = self.agent.current_focus
+                # print(self.agent.attention_scores)
+                # if self.agent.current_focus != curent_focus:
+                #     print(f"current focus: {self.agent.current_focus}")
+                #     curent_focus = self.agent.current_focus
 
         while running:
             current_time = time.time()
@@ -329,5 +336,5 @@ class Maze:
         pygame.quit()
 
 if __name__ == "__main__":
-    maze = Maze(rand_start=True, rand_sizes=True, rand_range=[4,10], hardcore=True)
+    maze = Maze(rand_start=False, rand_sizes=True, rand_range=[15,15], hardcore=True)
     maze.display_policy()
