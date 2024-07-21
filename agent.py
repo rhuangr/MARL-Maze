@@ -1,5 +1,5 @@
 import PPO
-import math
+from math import exp
 
 AGENT_VISION_RANGE = 4
 ACTIONS = ['forward', 'right', 'backward', 'left']
@@ -21,7 +21,6 @@ class Agent:
         self.direction = 2 # direction facing value at index of ['north', 'east, 'south', 'west']
         self.tag = 2
 
-        self.current_focus = None
         self.total_steps = 0
         self.breaks_remaining = breaks
         self.max_breaks = breaks
@@ -36,14 +35,10 @@ class Agent:
         self.reset_estimates()
         self.direction = 2
         self.breaks_remaining = self.max_breaks
-        self.current_focus = None
         
     def get_action(self, obs, mask):
-        action, prob , _, focus_index, attention_scores = self.brain.get_action(obs, mask)
-        self.current_focus = FEATURE_NAMES[focus_index]
-        self.attention_scores = attention_scores
-        # print(self.current_focus)
-        return action, math.exp(prob)
+        action, prob , _ = self.brain.get_action(obs, mask)
+        return action, exp(prob)
     
     def move(self, x, y, direction):
         self.x, self.y = x, y
@@ -53,7 +48,8 @@ class Agent:
     def get_observations(self):
         
         # start building the observation vector
-        direction = self.get_direction_feature()
+        direction = [0,0,0,0]
+        direction[self.direction] = 1
         dead_ends, move_action_mask, walls = self.get_dead_ends()
         # print(dead_ends)
         visible_marked, visible_unmarked, visible_end = self.get_visibility_features()

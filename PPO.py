@@ -1,4 +1,4 @@
-from networks import simple_nn
+from networks import Brain
 import maze
 import torch
 import numpy as np
@@ -17,8 +17,8 @@ class PPO():
         self.maze = maze
         self.input_size = self.maze.observation_space
         self.output_size = self.maze.action_space
-        self.actor = simple_nn([self.input_size, 250, 250, 250, self.output_size])
-        self.critic  = simple_nn([self.input_size, 250, 1])
+        self.actor = Brain([164,164,164,164,164])
+        self.critic  = Brain([64,64])
 
         self.epochs = epochs
         self.batch_size = batch_size
@@ -105,7 +105,7 @@ class PPO():
         while True:
             batch_obs.append(obs)
             batch_masks.append(action_mask)
-            action, log_prob, entropy, _, _= self.get_action(obs, action_mask)
+            action, log_prob, entropy= self.get_action(obs, action_mask)
             obs, action_mask, reward,done = self.maze.step(action)
             # print(f"action: {action}, prob: {torch.exp(log_prob)}")
             episode_rew.append(reward)
@@ -142,12 +142,12 @@ class PPO():
 
     def get_action(self, obs, action_mask):
         action_mask = torch.as_tensor(action_mask, dtype=torch.bool)
-        logits, attention_scores = self.actor(obs)
+        logits = self.actor(obs)
         adjusted_logits = torch.where(action_mask, logits, torch.tensor(-float('inf')))
         distribution = torch.distributions.Categorical(logits=adjusted_logits)
         action = distribution.sample()
         log_prob = distribution.log_prob(action)
-        return action.item(), log_prob, distribution.entropy(), torch.argmax(attention_scores), attention_scores
+        return action.item(), log_prob, distribution.entropy()
     
     def get_state_values(self, batch_obs):
         # batch_obs is a nested array [[obs1], [obs2], ...]
@@ -191,7 +191,7 @@ if __name__ == "__main__":
     maze = maze.Maze()
     brain = PPO(maze=maze)
     obs, mask = maze.reset()
-    action, logprob, _, _, _ = brain.get_action(obs, torch.as_tensor(mask, dtype=torch.bool))
+    action, logprob, _ = brain.get_action(obs, torch.as_tensor(mask, dtype=torch.bool))
     logporbbb = brain.get_log_probs(obs, torch.as_tensor(action, dtype=torch.float32), torch.as_tensor(mask, dtype=torch.bool))
             
     print(action)

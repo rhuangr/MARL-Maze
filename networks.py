@@ -1,50 +1,43 @@
 import torch
 import torch.nn as nn
 from torch.optim import Adam
+from numpy import sum,sqrt
 
 torch.manual_seed(3)
-# represents the dimensions of the feature vectors
-FEATURE_DIMS = [2, 4, 4, 4, 4, 1, 1, 1, 1, 1]
+# represents the dimensions of the feature vectors, used for dynamic network creation
+FEATURE_DIMS = [4, 4, 4, 4, 4, 1, 1, 1, 1, 1]
 FEATURE_AMOUNT = len(FEATURE_DIMS)
-OBS_VECTOR_SIZE = 23
-EMBEDDING_DIM = 10
+OBS_SPACE = sum(FEATURE_DIMS)
+EMBEDDING_DIM = 25
+ACTION_SPACE = 8
 
-class simple_nn(nn.Module):
-    def __init__(self, layer_sizes, activation=nn.ReLU, attention_layers=2):
-        super(simple_nn, self).__init__()
+class Brain(nn.Module):
+    # note: layer size does not include first layer since it is static
+    def __init__(self, hidden_sizes=[164,164,164,164,164], activation=nn.ReLU, attention_layers=3):
+        super(Brain, self).__init__()
         self.projection = Projection()
-        self.attention = Attention(attention_layers)
+        self.attention = m_Attention()
         self.layers = nn.ModuleList()
         self.activation = activation
 
         # dynamic layer creation
-        self.layers.append(nn.Linear(FEATURE_AMOUNT * EMBEDDING_DIM, layer_sizes[0]))
-        # self.layers.append(nn.LayerNorm(layer_sizes[0]))
-        
-        for i in range(len(layer_sizes)-1):
-            self.layers.append(nn.Linear(layer_sizes[i], layer_sizes[i+1]))
-            # self.layers.append(nn.LayerNorm(layer_sizes[i+1]))
-            
+        self.layers.append(nn.Linear(FEATURE_AMOUNT * EMBEDDING_DIM, hidden_sizes[0]))    
+        for i in range(len(hidden_sizes)-1):
+            self.layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i+1]))
+        self.layers.append(nn.Linear(hidden_sizes[-1], ACTION_SPACE))
+
         self.optimizer = Adam(self.parameters(), lr = 0.0001)
         
     def forward(self, x):
-        x = torch.as_tensor(x, dtype=torch.float32).reshape(-1, 23)
+        x = torch.as_tensor(x, dtype=torch.float32).reshape(-1, OBS_SPACE)
         x = self.projection(x)
-        x, attention_scores = self.attention(x)
+        x = self.attention(x)
         
         for i in range(len(self.layers) - 1):
             x = self.activation()(self.layers[i](x))
         x = self.layers[-1](x)
-        
-        # code for layer norm
-        # for i in range((len(self.layers)//2)-1):
-        #     x = self.layers[i*2](x)
-        #     x = self.layers[i*2+1](x)
-        #     x = self.activation()(x)
-        # x = self.layers[-2](x)
-        # x = self.activation()(x)
 
-        return x, attention_scores
+        return x
 
 # transforms individual features into embeddings of equal size, then passed into attention layer
 class Projection(nn.Module):
@@ -52,50 +45,54 @@ class Projection(nn.Module):
     def __init__(self,activation=nn.ReLU):
         super(Projection, self).__init__()
         self.activation = activation
-        self.layers = nn.ModuleList([nn.Linear(dim, EMBEDDING_DIM) for dim in FEATURE_DIMS])
+        self.layers = nn.ModuleList()
+        for dim in FEATURE_DIMS:
+            variable_size = 10 if dim == 1 else 4   
+            self.layers.append(nn.Linear(dim, variable_size))
+            self.layers.append(nn.Linear(variable_size,10))
+            self.layers.append(nn.Linear(10, EMBEDDING_DIM))
 
     def forward(self, input):
         index = 0
         observations = []
         for i in range(len(FEATURE_DIMS)):
-            embedding = self.layers[i](input[:, index:index+FEATURE_DIMS[i]])
-            embedding = self.activation()(embedding)
+            input_slice = input[:, index:index+FEATURE_DIMS[i]]
+            embedding = self.layers[i*3](input_slice)
+            embedding = self.layers[i*3+1](embedding)
+            embedding = self.activation()(self.layers[i*3+2](embedding))
             observations.append(embedding)
-        return torch.cat(observations, dim=1)
+        return torch.cat(observations,dim=0).reshape(-1, FEATURE_AMOUNT, EMBEDDING_DIM)
 
-class Attention(nn.Module):
-
-    def __init__(self, layers, middle_size=64, activation=nn.ReLU, temperature=2):
-        super(Attention, self).__init__()
-        self.temperature = temperature
-        self.layers = nn.ModuleList()
-        self.activation = activation
-
-        # dynamic layer creation
-        self.layers.append(nn.Linear(FEATURE_AMOUNT*EMBEDDING_DIM, middle_size))
-        for i in range(layers - 2):
-            self.layers.append(nn.Linear(middle_size,middle_size))
-        self.layers.append(nn.Linear(middle_size, FEATURE_AMOUNT))
+class m_Attention(nn.Module):
+    def __init__(self, kq_dim=10):
+        super(m_Attention, self).__init__()
+        self.kq_dim = kq_dim
+        self.keys = nn.Linear(EMBEDDING_DIM, kq_dim, bias=False)
+        self.querys = nn.Linear(EMBEDDING_DIM, kq_dim, bias=False)
+        self.values = nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM, bias=False)
 
     def forward(self, input):
-        
-        logits = input
-        for i in range(len(self.layers)):
-            logits = self.layers[i](logits)
-            self.activation()(logits)
-        attention_scores = nn.Softmax(dim=-1)(logits/self.temperature)
+        keys = self.keys(input)
+        querys = self.querys(input)
+        values = self.values(input)
+        omega = torch.softmax(torch.einsum("bij,bkj->bik",querys,keys)/sqrt(self.kq_dim), dim=-1)
+        context = torch.einsum("bij,bjk->bik",omega, values)
+        return (input+context).reshape(-1,FEATURE_AMOUNT*EMBEDDING_DIM)
 
-        input = input.reshape(-1, FEATURE_AMOUNT, EMBEDDING_DIM)
-        weighted_features = torch.einsum("ijk,ij->ijk", input, 1+attention_scores).reshape(-1,FEATURE_AMOUNT*EMBEDDING_DIM)
-        return weighted_features, attention_scores
-    
+
 if __name__ == "__main__":
-    x = torch.as_tensor(([[1., 0., 1., 0., 1., 1., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0.,
+    x = torch.as_tensor(([[1.,1,1,1, 0., 1., 0., 1., 1., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0.,
          0., 0., 0., 0.]]), dtype=torch.float32)
-    y = torch.as_tensor([[2,3],[3,4],[4,5]], dtype=torch.float32)
+    y = torch.as_tensor([[[2,3],[3,4],[4,5]],[[1,2],[2,3],[3,4]]], dtype=torch.float32)
     z = torch.as_tensor(([[1,2,3],[1,2,3]],[[1,2,3],[1,2,3]],[[1,2,3],[1,2,3]]), dtype=torch.float32)
     
-    x = nn.Linear(22,22)(x)
-    print(x)
-    x = nn.LayerNorm(22)(x)
-    print(x)
+    # test = nn.Linear(2,10)(y)
+    # print(test)
+    test = Brain([25,25,4])
+    a, b = test(x)
+    print()
+    print()
+    print(a)
+    print(b)
+    # print(test)
+    # print(torch.softmax(test,dim=-1))

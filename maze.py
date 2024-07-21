@@ -36,14 +36,11 @@ class Maze:
         self.shortest_path = None
         self.shortest_path_len = None
 
-        self.observation_space = 23
-        self.action_space = 8
-        self.max_timestep = max_timestep
-
         self.agent = agent.Agent(RED, self)
         # self.agent = Agent(16, 10, RED, self)
 
-        self.last_timestep = time.time()
+        self.max_timestep = max_timestep # amount of timesteps before truncation
+        self.last_timestep = time.time() # used to animate the maze
 
         # maze generation parameters
         self.rand_sizes = rand_sizes
@@ -292,26 +289,19 @@ class Maze:
         self.draw_maze()
         running = True
         is_moving = False
-        current_focus = None
         
         def update_env():
                 
-                nonlocal obs, mask, current_focus
-                action, prob = self.agent.get_action([obs], mask)
+                nonlocal obs, mask
+                action, prob = self.agent.get_action(obs, mask)
                 print(f"prob of action:{action} is {prob}")
                 obs, mask, reward, done = self.step(action)
-                current_focus = self.agent.current_focus
                 self.draw_maze()
 
                 if done: 
                     obs, mask = self.reset()
                     self.set_screen()
                     self.draw_maze()  
-
-                # print(self.agent.attention_scores)
-                # if self.agent.current_focus != curent_focus:
-                #     print(f"current focus: {self.agent.current_focus}")
-                #     curent_focus = self.agent.current_focus
 
         while running:
             current_time = time.time()
