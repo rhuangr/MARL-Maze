@@ -3,7 +3,7 @@ import random
 import time
 import agent
 
-random.seed(3)
+# random.seed(3)
 # Initialize Pygame
 pygame.init()
 
@@ -29,7 +29,7 @@ class Maze:
         self.width = default_size[0] * 2 - 1
         self.height = default_size[1] * 2 - 1
         
-        # these variables will be initialized upon calling self.reset() which resets the maze
+        # these variables will be initialized upon calling self.reset() which builds the maze and sets agents
         self.layout = None
         self.start = None
         self.end = None
@@ -76,11 +76,14 @@ class Maze:
             new_x, new_y = agent_.x + x_dif, agent_.y + y_dif
             if action < 4:
                 updated_estimates = agent_.move(new_x, new_y, direction)
-            elif agent_.breaks_remaining > 0:
-                # break wall
-                self.layout[new_y][new_x] = 0
-                agent_.breaks_remaining -= 1
+            # elif agent_.breaks_remaining > 0:
 
+            #     break wall
+            #     self.layout[new_y][new_x] = 0
+            #     agent_.breaks_remaining -= 1
+            
+        self.agent.total_steps+=1
+        
         # reward function and done logic
         reward = 0
         done = False
@@ -88,7 +91,7 @@ class Maze:
             reward = 1
             done = True
         elif updated_estimates:
-            reward = 0.009       
+            reward = 0.005       
         if self.current_t >= self.max_timestep:
             done = True
 
@@ -294,7 +297,7 @@ class Maze:
                 
                 nonlocal obs, mask
                 action, prob = self.agent.get_action(obs, mask)
-                print(f"prob of action:{action} is {prob}")
+                # print(f"prob of action:{action} is {prob}")
                 obs, mask, reward, done = self.step(action)
                 self.draw_maze()
 
@@ -315,7 +318,8 @@ class Maze:
                         self.draw_maze()
                     elif event.key == pygame.K_e:
                         update_env()
-
+                    elif event.key == pygame.K_w:
+                        self.agent.print_obs()
                     elif event.key == pygame.K_SPACE:
                         is_moving = True if is_moving == False else False
                                               
@@ -326,5 +330,5 @@ class Maze:
         pygame.quit()
 
 if __name__ == "__main__":
-    maze = Maze(rand_start=False, rand_sizes=True, rand_range=[15,15], hardcore=True)
+    maze = Maze(rand_start=True, rand_sizes=True, rand_range=[10,10], hardcore=True)
     maze.display_policy()

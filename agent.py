@@ -1,5 +1,6 @@
 import PPO
 from math import exp
+from collections import deque
 
 AGENT_VISION_RANGE = 4
 ACTIONS = ['forward', 'right', 'backward', 'left']
@@ -8,8 +9,9 @@ BINARY_DIRECTIONS = [[0,0], [0,1], [1,0], [1,1]] # binary representation of poss
 DELTAS = [(0, -1), (1, 0), (0, 1), (-1, 0)] # change in x,y after moving in respective cardinal direction
 
 
-FEATURE_NAMES = ['direction', 'dead ends','visible marked cell', 'visible unmarked cell',
-                  'visible_end', 'on marked cell', 'breaks_remaining', 'timestep', 'relative x', 'relative y']
+FEATURE_NAMES = ['direction', 'dead ends', 'visible unmarked cell', 'visible_end',
+                 'move t-4', 'move t-3','move t-2','move t-1','timestep', 'relative x', 'relative y']
+FEATURE_DIMS = [4, 4, 4, 4, 4, 4, 4, 4, 1, 1, 1]
 
 class Agent:
     def __init__(self, color, maze, breaks=2):
@@ -17,13 +19,13 @@ class Agent:
         self.y = 0
         self.maze = maze
         self.color = color      
-        self.brain = PPO.PPO(maze=maze)
+        self.brain = PPO.PPO(self, maze)
         self.direction = 2 # direction facing value at index of ['north', 'east, 'south', 'west']
         self.tag = 2
 
         self.total_steps = 0
-        self.breaks_remaining = breaks
-        self.max_breaks = breaks
+        self.memory = deque([10,10,10,10], maxlen=4)
+        self.average_exit = 5000
                 
         # agent's estimate of dimensions W x H of the maze
         self.width_estimate = 1
@@ -34,7 +36,8 @@ class Agent:
         self.x, self.y = self.maze.start
         self.reset_estimates()
         self.direction = 2
-        self.breaks_remaining = self.max_breaks
+        self.memory = deque([10,10,10,10], maxlen=4)
+        # self.breaks_remaining = self.max_breaks
         
     def get_action(self, obs, mask):
         action, prob , _ = self.brain.get_action(obs, mask)
@@ -52,28 +55,27 @@ class Agent:
         direction[self.direction] = 1
         dead_ends, move_action_mask, walls = self.get_dead_ends()
         # print(dead_ends)
-        visible_marked, visible_unmarked, visible_end = self.get_visibility_features()
-        on_marked_cell = 1 if self.maze.layout[self.y][self.x] == self.tag else 0
-        breaks_remaining = self.breaks_remaining/self.max_breaks
-        timestep = 0.0005 * self.total_steps
-        features = [direction, dead_ends, visible_marked, visible_unmarked, visible_end]
+        visible_marked, visible_end = self.get_visibility_features()
+        memory = self.get_memory()
+
+        features = [direction, dead_ends, visible_marked, visible_end, memory]
         observations = []
         for feature in features:
             observations.extend(feature)
-        observations.append(on_marked_cell)
-        observations.append(breaks_remaining)
+            
+        timestep = 1/self.average_exit * self.total_steps    
         observations.append(timestep)
         
             # since this project relies on agents not knowing the layout of the maze
             # rel x, rel y represent the agent's estimate of his current position x,y
-        relative_x = 0 if self.width_estimate < 4 else (self.x - self.min_x_visited) / self.width_estimate
-        relative_y = 0 if self.height_estimate < 4 else (self.max_y_visited - self.y) / self.height_estimate
+        relative_x = 0 if self.width_estimate < 3 else (self.x - self.min_x_visited) / self.width_estimate
+        relative_y = 0 if self.height_estimate < 3 else (self.max_y_visited - self.y) / self.height_estimate
         observations.append(relative_x)
         observations.append(relative_y)
 
         # start building the action mask
         action_mask = []
-        mark_action_mask = True if on_marked_cell == 0 else False
+        mark_action_mask = True if self.maze.layout[self.y][self.x] != self.tag else False
         break_action_mask = [False, False, False, False] #if self.breaks_remaining == 0 else walls
         break_action_mask[2] = mark_action_mask
         action_mask.extend(move_action_mask)
@@ -85,10 +87,6 @@ class Agent:
         # print(f"rel x: {relative_x}, rel y: {relative_y}")
         # print()
         return observations, action_mask
-    
-    # returns the binary representation of a direction that the agent is facing
-    def get_direction_feature(self):
-        return BINARY_DIRECTIONS[self.direction]
     
     # returns a list representing visible dead ends in all four directions
     def get_dead_ends(self):
@@ -137,10 +135,8 @@ class Agent:
     def get_visibility_features(self):
         mark = self.tag
         visible_marked_squares = [0,0,0,0]
-        visible_unmarked_squares = [0,0,0,0]
         visible_end = [0,0,0,0]
         
-
         for i in range(len(DELTAS)):
             next_x, next_y = self.x, self.y
             x_dif, y_dif = DELTAS[(i+self.direction)%4][0], DELTAS[(i+self.direction)%4][1]
@@ -157,14 +153,19 @@ class Agent:
                 if new_cell == mark:
                     visible_marked_squares[i] = 1
 
-                if new_cell == 0:
-                    visible_unmarked_squares[i] = 1
-
                 if new_cell == 1:
                     break
 
-        return visible_marked_squares, visible_unmarked_squares, visible_end
-
+        return visible_marked_squares, visible_end
+    
+    def get_memory(self):
+        memory_feature = [0 for _ in range(16)]
+        for i in range(4):
+            action = self.memory[i]
+            if action < 4:
+                memory_feature[i*4+action] = 1
+        return memory_feature
+    
     def estimate_maze(self, direction):
         
         # print(f"current: {self.x}, {self.y}")
@@ -216,3 +217,12 @@ class Agent:
                     neighbors[i] = True
 
         return neighbors, walls
+    
+    def print_obs(self):
+        obs, _ = self.get_observations()
+        index = 0
+        for i in range(len(FEATURE_DIMS)):
+            print(f"{FEATURE_NAMES[i]}: {obs[index:index+FEATURE_DIMS[i]]}")
+            index+=FEATURE_DIMS[i]
+        print()
+        

@@ -11,15 +11,14 @@ ACTOR_PATH = 'actor.pth'
 CRITIC_PATH = 'critic.pth'
 
 class PPO():
-    def __init__(self, maze, epochs=5000, batch_size=6000, discount_rate=0.99,
-                  updates_per_batch=5, mbatch_size=64, clip=0.2, beta=0.01, max_grad=0.5):
+    def __init__(self, agent, maze, epochs=5000, batch_size=6000, discount_rate=0.99,
+                  updates_per_batch=5, mbatch_size=64, clip=0.2, beta=0.05, max_grad=0.5):
         
         self.maze = maze
-        self.input_size = self.maze.observation_space
-        self.output_size = self.maze.action_space
         self.actor = Brain([164,164,164,164,164])
-        self.critic  = Brain([64,64])
+        self.critic  = Brain(actor=False, hidden_sizes=[64,64])
 
+        self.agent = agent
         self.epochs = epochs
         self.batch_size = batch_size
         self.discount_rate = discount_rate
@@ -32,15 +31,23 @@ class PPO():
         self.load_parameters()
 
     def train(self):
-        for i in range(self.epochs):
+        for epoch in range(self.epochs):
             batch_obs, batch_actions, batch_log_probs, batch_rew, batch_shortest_paths, episode_lens, batch_entropies, batch_masks= self.get_batch()
-            print(f"Epoch{i+1}")
-            for i in range(len(episode_lens)):
-                print(f"Run {i+1}: exit time:{episode_lens[i]}, shortest path length: {batch_shortest_paths[i]}")
+            self.agent.average_exit = np.mean(episode_lens) * 3
+            print(f"-------------------- Epoch #{epoch} --------------------")
+            print(f"Mazes solved in current epoch: {len(episode_lens)}")
+            print(f"Average Exit Time: {np.mean(episode_lens)}")
+            print(f"Average Length of Shortest Path: {np.mean(batch_shortest_paths)}")
+            # print(f"Timesteps So Far: {t_so_far}", flush=True)
+            # print(f"Iteration took: {delta_t} secs", flush=True)
+            print(f"--------------------------------------------------", flush=True)
             print()
+            # print(f"Epoch {epoch+1}")
+            # for epoch in range(len(episode_lens)):
+            #     print(f"Run {epoch+1}: exit time:{episode_lens[epoch]}, shortest path length: {batch_shortest_paths[epoch]}")
+            # print()
 
             rtgs = self.get_rtgs(batch_rew)
-            # mbatch_updates = self.batch_size // self.mbatch_size
             index_list = np.arange(len(batch_obs))
             np.random.shuffle(index_list)
 
@@ -134,7 +141,7 @@ class PPO():
         return batch_obs, batch_act, batch_log_probs, batch_rew, batch_shortest_paths, episode_lens, batch_entropies, batch_masks
     
     def get_log_probs(self, batch_obs, batch_actions, batch_masks):
-        logits, _ = self.actor(batch_obs)
+        logits = self.actor(batch_obs)
         adjusted_logits = torch.where(batch_masks, logits, torch.tensor(-float('inf')))
         distribution = torch.distributions.Categorical(logits=adjusted_logits)
         log_probs = distribution.log_prob(batch_actions)
@@ -147,21 +154,17 @@ class PPO():
         distribution = torch.distributions.Categorical(logits=adjusted_logits)
         action = distribution.sample()
         log_prob = distribution.log_prob(action)
+        self.agent.memory.append(action)
         return action.item(), log_prob, distribution.entropy()
     
+    
     def get_state_values(self, batch_obs):
-        # batch_obs is a nested array [[obs1], [obs2], ...]
-        batch_values, _ = self.critic(batch_obs)
+        batch_values = self.critic(batch_obs)
         return batch_values.squeeze()
 
 
     def get_rtgs(self, batch_rew):
-        rtgs = []
-        # for rew in batch_rew:
-        #     print(len(rew),end=" ")
-        # print()
-        # current = 0
-        
+        rtgs = []     
         for episode_rew in reversed(batch_rew):
             discounted_rew = 0
             # print(f"hi: {len(episode_rew)}", end= " ")
@@ -183,9 +186,6 @@ class PPO():
             print("successfuly loaded existing parameters")
             self.actor.load_state_dict(torch.load(ACTOR_PATH))
             self.critic.load_state_dict(torch.load(CRITIC_PATH))
-    
-    
-
 
 if __name__ == "__main__":
     maze = maze.Maze()

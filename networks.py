@@ -5,7 +5,7 @@ from numpy import sum,sqrt
 
 torch.manual_seed(3)
 # represents the dimensions of the feature vectors, used for dynamic network creation
-FEATURE_DIMS = [4, 4, 4, 4, 4, 1, 1, 1, 1, 1]
+FEATURE_DIMS = [4, 4, 4, 4, 4, 4, 4, 4, 1, 1, 1]
 FEATURE_AMOUNT = len(FEATURE_DIMS)
 OBS_SPACE = sum(FEATURE_DIMS)
 EMBEDDING_DIM = 25
@@ -13,7 +13,7 @@ ACTION_SPACE = 8
 
 class Brain(nn.Module):
     # note: layer size does not include first layer since it is static
-    def __init__(self, hidden_sizes=[164,164,164,164,164], activation=nn.ReLU, attention_layers=3):
+    def __init__(self, actor=True, hidden_sizes=[164,164,164,164,164], activation=nn.ReLU, attention_layers=3):
         super(Brain, self).__init__()
         self.projection = Projection()
         self.attention = m_Attention()
@@ -22,9 +22,13 @@ class Brain(nn.Module):
 
         # dynamic layer creation
         self.layers.append(nn.Linear(FEATURE_AMOUNT * EMBEDDING_DIM, hidden_sizes[0]))    
+        # self.layers.append(nn.Linear(OBS_SPACE, hidden_sizes[0]))    
         for i in range(len(hidden_sizes)-1):
             self.layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i+1]))
-        self.layers.append(nn.Linear(hidden_sizes[-1], ACTION_SPACE))
+        if actor:
+            self.layers.append(nn.Linear(hidden_sizes[-1], ACTION_SPACE))
+        else:
+            self.layers.append(nn.Linear(hidden_sizes[-1], 1))
 
         self.optimizer = Adam(self.parameters(), lr = 0.0001)
         
@@ -32,7 +36,7 @@ class Brain(nn.Module):
         x = torch.as_tensor(x, dtype=torch.float32).reshape(-1, OBS_SPACE)
         x = self.projection(x)
         x = self.attention(x)
-        
+        # x = torch.reshape(x,(-1,FEATURE_AMOUNT * EMBEDDING_DIM))
         for i in range(len(self.layers) - 1):
             x = self.activation()(self.layers[i](x))
         x = self.layers[-1](x)
@@ -61,7 +65,7 @@ class Projection(nn.Module):
             embedding = self.layers[i*3+1](embedding)
             embedding = self.activation()(self.layers[i*3+2](embedding))
             observations.append(embedding)
-        return torch.cat(observations,dim=0).reshape(-1, FEATURE_AMOUNT, EMBEDDING_DIM)
+        return torch.cat(observations,dim=1).reshape(-1, FEATURE_AMOUNT, EMBEDDING_DIM)
 
 class m_Attention(nn.Module):
     def __init__(self, kq_dim=10):
