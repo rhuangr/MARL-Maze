@@ -3,7 +3,7 @@ import random
 import time
 import agent
 
-# random.seed(3)
+random.seed(3)
 # Initialize Pygame
 pygame.init()
 
@@ -19,7 +19,7 @@ CELL_SIZE = 40
 AGENT_RADIUS = CELL_SIZE/2.2
 AGENT_EYE_RADIUS = AGENT_RADIUS//4
 
-TIMESTEP_LENGTH = 0.11 # USED WHEN RENDERING THE GAME
+TIMESTEP_LENGTH = 0.08 # USED WHEN RENDERING THE GAME
 
 class Maze:
     def __init__(self, max_timestep = 5000, hardcore=False, rand_start=True,
@@ -64,25 +64,19 @@ class Maze:
     
     def step(self, action):
         self.current_t += 1
+        self.agent.total_steps+=1
         updated_estimates = False
-
+        move,mark = action[0], action[1]
+        
         # action logic
         agent_ = self.agent
-        if action == 6:
+        if mark == 1:
             self.layout[agent_.y][agent_.x] = agent_.tag
-        elif 0 <= action < 8:
-            direction = (action + agent_.direction) % 4
-            x_dif, y_dif = agent.DELTAS[direction]
-            new_x, new_y = agent_.x + x_dif, agent_.y + y_dif
-            if action < 4:
-                updated_estimates = agent_.move(new_x, new_y, direction)
-            # elif agent_.breaks_remaining > 0:
+        direction = (move + agent_.direction) % 4
+        x_dif, y_dif = agent.DELTAS[direction]
+        new_x, new_y = agent_.x + x_dif, agent_.y + y_dif
+        updated_estimates = agent_.move(new_x, new_y, direction)
 
-            #     break wall
-            #     self.layout[new_y][new_x] = 0
-            #     agent_.breaks_remaining -= 1
-            
-        self.agent.total_steps+=1
         
         # reward function and done logic
         reward = 0
@@ -91,10 +85,9 @@ class Maze:
             reward = 1
             done = True
         elif updated_estimates:
-            reward = 0.005       
+            reward = 0.001      
         if self.current_t >= self.max_timestep:
             done = True
-
         observations, action_mask = self.agent.get_observations()
         return observations, action_mask, reward, done
     
@@ -330,5 +323,5 @@ class Maze:
         pygame.quit()
 
 if __name__ == "__main__":
-    maze = Maze(rand_start=True, rand_sizes=True, rand_range=[10,10], hardcore=True)
+    maze = Maze(rand_start=True, rand_sizes=True, rand_range=[15,15], hardcore=True)
     maze.display_policy()

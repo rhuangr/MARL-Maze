@@ -1,4 +1,5 @@
 import PPO
+import numpy as np
 from math import exp
 from collections import deque
 
@@ -24,7 +25,7 @@ class Agent:
         self.tag = 2
 
         self.total_steps = 0
-        self.memory = deque([10,10,10,10], maxlen=4)
+        self.memory = deque([-1,-1,-1,-1], maxlen=4)
         self.average_exit = 5000
                 
         # agent's estimate of dimensions W x H of the maze
@@ -36,7 +37,7 @@ class Agent:
         self.x, self.y = self.maze.start
         self.reset_estimates()
         self.direction = 2
-        self.memory = deque([10,10,10,10], maxlen=4)
+        self.memory = deque([-1,-1,-1,-1], maxlen=4)
         # self.breaks_remaining = self.max_breaks
         
     def get_action(self, obs, mask):
@@ -51,9 +52,9 @@ class Agent:
     def get_observations(self):
         
         # start building the observation vector
-        direction = [0,0,0,0]
+        direction = np.zeros(4)
         direction[self.direction] = 1
-        dead_ends, move_action_mask, walls = self.get_dead_ends()
+        dead_ends, move_action_mask = self.get_dead_ends()
         # print(dead_ends)
         visible_marked, visible_end = self.get_visibility_features()
         memory = self.get_memory()
@@ -75,11 +76,9 @@ class Agent:
 
         # start building the action mask
         action_mask = []
-        mark_action_mask = True if self.maze.layout[self.y][self.x] != self.tag else False
-        break_action_mask = [False, False, False, False] #if self.breaks_remaining == 0 else walls
-        break_action_mask[2] = mark_action_mask
+        mark_action_mask = [True] if self.maze.layout[self.y][self.x] != self.tag else [False]
         action_mask.extend(move_action_mask)
-        action_mask.extend(break_action_mask)
+        action_mask.extend(mark_action_mask)
         
         # print(f"dead ends: {dead_ends}, mask: {action_mask}")
         # print(f"marks: {visible_marked}, unmark: {visible_unmarked}")
@@ -92,9 +91,9 @@ class Agent:
     def get_dead_ends(self):
 
         # binary representation of: is there a dead end in any clockwise cardinal directions, starting from north
-        dead_ends = [0,0,0,0] 
+        dead_ends = np.zeros(4)
         current_cell = (self.x, self.y)
-        neighbors, walls = self.get_neighbors(current_cell)
+        neighbors = self.get_neighbors(current_cell)
         move_action_mask = neighbors
 
         # if there is a wall in the adjacent cell of a given direction, then that direction is a dead end
@@ -115,7 +114,7 @@ class Agent:
             # simulates vision, by checking if next cells in the current direction are dead ends
             for j in range(AGENT_VISION_RANGE):
                 next_x, next_y = next_x + x_dif, next_y + y_dif
-                neighbors, _ = self.get_neighbors((next_x, next_y))
+                neighbors = self.get_neighbors((next_x, next_y))
                 
                 # if the cell we expand in has a turn, it is not a dead end
                 if neighbors[(direction + 1)%4] == True or neighbors[(direction - 1)%4] == True:
@@ -130,12 +129,12 @@ class Agent:
                 elif neighbors[direction] == False:
                     break
 
-        return dead_ends, move_action_mask, walls
+        return dead_ends, move_action_mask
         
     def get_visibility_features(self):
         mark = self.tag
-        visible_marked_squares = [0,0,0,0]
-        visible_end = [0,0,0,0]
+        visible_marked_squares = np.zeros(4)
+        visible_end = np.zeros(4)
         
         for i in range(len(DELTAS)):
             next_x, next_y = self.x, self.y
@@ -159,11 +158,10 @@ class Agent:
         return visible_marked_squares, visible_end
     
     def get_memory(self):
-        memory_feature = [0 for _ in range(16)]
-        for i in range(4):
-            action = self.memory[i]
-            if action < 4:
-                memory_feature[i*4+action] = 1
+        memory_feature = np.zeros(16)
+        for i, move in enumerate(self.memory):
+            if move > -1:
+                memory_feature[i * 4 + move] = 1
         return memory_feature
     
     def estimate_maze(self, direction):
@@ -204,19 +202,15 @@ class Agent:
     def get_neighbors(self, cell):
         x, y = cell
         neighbors = [False, False, False, False]
-        walls = [False, False, False, False]
 
         for i in range(len(DELTAS)):
             x_dif, y_dif = DELTAS[(i + self.direction)%4]
             neighbor_x, neighbor_y = x + x_dif, y + y_dif
 
-            if (0 <= neighbor_x < self.maze.width and 0 <= neighbor_y < self.maze.height):
-                if self.maze.layout[neighbor_y][neighbor_x] == 1:
-                    walls[i] = True
-                else:
-                    neighbors[i] = True
+            if (self.maze.is_valid_cell(neighbor_x,neighbor_y) and self.maze.layout[neighbor_y][neighbor_x] != 1):
+                neighbors[i] = True
 
-        return neighbors, walls
+        return neighbors
     
     def print_obs(self):
         obs, _ = self.get_observations()

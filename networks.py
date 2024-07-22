@@ -13,35 +13,44 @@ ACTION_SPACE = 8
 
 class Brain(nn.Module):
     # note: layer size does not include first layer since it is static
-    def __init__(self, actor=True, hidden_sizes=[164,164,164,164,164], activation=nn.ReLU, attention_layers=3):
+    def __init__(self, actor=True, hidden_sizes=[164,164,164,164,164], activation=nn.ReLU):
         super(Brain, self).__init__()
         self.projection = Projection()
         self.attention = m_Attention()
         self.layers = nn.ModuleList()
         self.activation = activation
-
+        self.actor = actor
         # dynamic layer creation
-        self.layers.append(nn.Linear(FEATURE_AMOUNT * EMBEDDING_DIM, hidden_sizes[0]))    
-        # self.layers.append(nn.Linear(OBS_SPACE, hidden_sizes[0]))    
+        self.layers.append(nn.Linear(FEATURE_AMOUNT * EMBEDDING_DIM, hidden_sizes[0]))     
         for i in range(len(hidden_sizes)-1):
             self.layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i+1]))
+            
         if actor:
-            self.layers.append(nn.Linear(hidden_sizes[-1], ACTION_SPACE))
+            self.move_head = nn.Linear(hidden_sizes[-1],4)
+            self.mark_head = nn.Linear(hidden_sizes[-1],1)
+            # self.signal_head = nn.Linear(hidden_sizes[-1], 1)
         else:
             self.layers.append(nn.Linear(hidden_sizes[-1], 1))
-
-        self.optimizer = Adam(self.parameters(), lr = 0.0001)
+        
+        self.optimizer = Adam(self.parameters(), lr = 0.00001)
         
     def forward(self, x):
         x = torch.as_tensor(x, dtype=torch.float32).reshape(-1, OBS_SPACE)
         x = self.projection(x)
         x = self.attention(x)
         # x = torch.reshape(x,(-1,FEATURE_AMOUNT * EMBEDDING_DIM))
-        for i in range(len(self.layers) - 1):
+        for i in range(len(self.layers)-1):
             x = self.activation()(self.layers[i](x))
-        x = self.layers[-1](x)
-
-        return x
+            
+        if self.actor:
+            x = self.activation()(self.layers[-1](x))
+            move = self.move_head(x)
+            mark = self.mark_head(x)
+            return [move,mark]
+        else:
+            x = self.layers[-1](x)
+            return x
+        # signal = self.signal_head(x)
 
 # transforms individual features into embeddings of equal size, then passed into attention layer
 class Projection(nn.Module):
@@ -92,11 +101,22 @@ if __name__ == "__main__":
     
     # test = nn.Linear(2,10)(y)
     # print(test)
-    test = Brain([25,25,4])
-    a, b = test(x)
-    print()
-    print()
-    print(a)
-    print(b)
+    # test = Brain([25,25,4])
+    # a, b = test(x)
+    # print()
+    # print()
+    # print(a)
+    # print(b)
     # print(test)
-    # print(torch.softmax(test,dim=-1))
+    # # print(torch.softmax(test,dim=-1))
+    # x = torch.einsum("bij,bkj->bik",y,y)
+    # print(torch.einsum("bij,bkj->bik",y,y))
+    # print(torch.einsum("bij,bjk->bik",x,y))
+    
+    a = torch.as_tensor([[0.2,0.3,0.5],[0.2,0.3,0.5]], dtype=torch.float32)
+    b = torch.as_tensor([[0.3, 0.7]], dtype=torch.float32)
+    
+    x = [1,2,3]
+    x =~x
+    print(x)
+    # print(torch.einsum("ij,ik->ikj",a,b))
