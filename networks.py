@@ -5,11 +5,10 @@ from numpy import sum,sqrt
 
 torch.manual_seed(3)
 # represents the dimensions of the feature vectors, used for dynamic network creation
-FEATURE_DIMS = [4, 4, 4, 4, 4, 4, 4, 4, 1, 1, 1]
+FEATURE_DIMS = [4, 4, 4, 4, 4, 4, 4, 4, 1, 2]
 FEATURE_AMOUNT = len(FEATURE_DIMS)
 OBS_SPACE = sum(FEATURE_DIMS)
-EMBEDDING_DIM = 25
-ACTION_SPACE = 8
+EMBEDDING_DIM = 40
 
 class Brain(nn.Module):
     # note: layer size does not include first layer since it is static
@@ -26,13 +25,13 @@ class Brain(nn.Module):
             self.layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i+1]))
             
         if actor:
-            self.move_head = nn.Linear(hidden_sizes[-1],4)
+            self.move_head = nn.Linear(hidden_sizes[-1],5)
             self.mark_head = nn.Linear(hidden_sizes[-1],1)
-            # self.signal_head = nn.Linear(hidden_sizes[-1], 1)
+            self.signal_head = nn.Linear(hidden_sizes[-1], 1)
         else:
             self.layers.append(nn.Linear(hidden_sizes[-1], 1))
         
-        self.optimizer = Adam(self.parameters(), lr = 0.00001)
+        self.optimizer = Adam(self.parameters(), lr = 0.0001)
         
     def forward(self, x):
         x = torch.as_tensor(x, dtype=torch.float32).reshape(-1, OBS_SPACE)
@@ -46,7 +45,8 @@ class Brain(nn.Module):
             x = self.activation()(self.layers[-1](x))
             move = self.move_head(x)
             mark = self.mark_head(x)
-            return [move,mark]
+            signal = self.signal_head(x)
+            return [move,mark,signal]
         else:
             x = self.layers[-1](x)
             return x
@@ -60,10 +60,10 @@ class Projection(nn.Module):
         self.activation = activation
         self.layers = nn.ModuleList()
         for dim in FEATURE_DIMS:
-            variable_size = 10 if dim == 1 else 4   
+            variable_size = EMBEDDING_DIM - dim if dim != 1 else EMBEDDING_DIM
             self.layers.append(nn.Linear(dim, variable_size))
-            self.layers.append(nn.Linear(variable_size,10))
-            self.layers.append(nn.Linear(10, EMBEDDING_DIM))
+            self.layers.append(nn.Linear(variable_size,EMBEDDING_DIM))
+            self.layers.append(nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM))
 
     def forward(self, input):
         index = 0
@@ -74,6 +74,7 @@ class Projection(nn.Module):
             embedding = self.layers[i*3+1](embedding)
             embedding = self.activation()(self.layers[i*3+2](embedding))
             observations.append(embedding)
+        print(torch.cat(observations,dim=1).reshape(-1, FEATURE_AMOUNT, EMBEDDING_DIM).shape)
         return torch.cat(observations,dim=1).reshape(-1, FEATURE_AMOUNT, EMBEDDING_DIM)
 
 class m_Attention(nn.Module):

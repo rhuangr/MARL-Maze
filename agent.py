@@ -11,18 +11,22 @@ DELTAS = [(0, -1), (1, 0), (0, 1), (-1, 0)] # change in x,y after moving in resp
 
 
 FEATURE_NAMES = ['direction', 'dead ends', 'visible unmarked cell', 'visible_end',
-                 'move t-4', 'move t-3','move t-2','move t-1','timestep', 'relative x', 'relative y']
-FEATURE_DIMS = [4, 4, 4, 4, 4, 4, 4, 4, 1, 1, 1]
+                 'move t-4', 'move t-3','move t-2','move t-1','timestep', 'relative position']
+FEATURE_DIMS = [4, 4, 4, 4, 4, 4, 4, 4, 1, 2]
 
 class Agent:
-    def __init__(self, color, maze, breaks=2):
+    def __init__(self, color, tag, maze, breaks=2):
         self.x = 0
         self.y = 0
         self.maze = maze
         self.color = color      
         self.brain = PPO.PPO(self, maze)
         self.direction = 2 # direction facing value at index of ['north', 'east, 'south', 'west']
-        self.tag = 2
+        self.tag = tag
+        
+        self.signal_time = 0 # determines the radius of signal shape drawn on screen
+        self.is_signalling = False
+        self.signal_origin = None
 
         self.total_steps = 0
         self.memory = deque([-1,-1,-1,-1], maxlen=4)
@@ -38,10 +42,13 @@ class Agent:
         self.reset_estimates()
         self.direction = 2
         self.memory = deque([-1,-1,-1,-1], maxlen=4)
+        self.signal_time = 0
+        self.is_signalling = False
+        self.signal_origin = None
         # self.breaks_remaining = self.max_breaks
         
     def get_action(self, obs, mask):
-        action, prob , _ = self.brain.get_action(obs, mask)
+        action, prob= self.brain.get_action(obs, mask)
         return action, exp(prob)
     
     def move(self, x, y, direction):
@@ -55,7 +62,6 @@ class Agent:
         direction = np.zeros(4)
         direction[self.direction] = 1
         dead_ends, move_action_mask = self.get_dead_ends()
-        # print(dead_ends)
         visible_marked, visible_end = self.get_visibility_features()
         memory = self.get_memory()
 
@@ -75,16 +81,14 @@ class Agent:
         observations.append(relative_y)
 
         # start building the action mask
-        action_mask = []
-        mark_action_mask = [True] if self.maze.layout[self.y][self.x] != self.tag else [False]
-        action_mask.extend(move_action_mask)
-        action_mask.extend(mark_action_mask)
-        
-        # print(f"dead ends: {dead_ends}, mask: {action_mask}")
-        # print(f"marks: {visible_marked}, unmark: {visible_unmarked}")
-        # print(f"end vis: {visible_end}")
-        # print(f"rel x: {relative_x}, rel y: {relative_y}")
-        # print()
+        mark_action_mask = True if self.maze.layout[self.y][self.x] != self.tag else False
+        signal_action_mask = False if self.is_signalling else True
+        action_mask = move_action_mask
+        # we append true for the fifth action: stay still since agent can always stay still
+        action_mask.append(True)
+        action_mask.append(mark_action_mask)
+        action_mask.append(signal_action_mask)
+
         return observations, action_mask
     
     # returns a list representing visible dead ends in all four directions
@@ -128,7 +132,8 @@ class Agent:
                 # if the direction in which the search is expanding in encounters a wall, then no need to keep expanding
                 elif neighbors[direction] == False:
                     break
-
+        
+            
         return dead_ends, move_action_mask
         
     def get_visibility_features(self):

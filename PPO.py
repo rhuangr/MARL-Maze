@@ -32,8 +32,8 @@ class PPO():
 
     def train(self):
         for epoch in range(self.epochs):
-            batch_obs, batch_actions, batch_log_probs, batch_rew, batch_shortest_paths, episode_lens, batch_entropies, batch_masks= self.get_batch()
-            self.agent.average_exit = np.mean(episode_lens) * 3
+            batch_obs, batch_actions, batch_log_probs, batch_rew, batch_shortest_paths, episode_lens, batch_masks= self.get_batch()
+            self.agent.average_exit = np.mean(episode_lens)
             print(f"-------------------- Epoch #{epoch} --------------------")
             print(f"Mazes solved in current epoch: {len(episode_lens)}")
             print(f"Average Exit Time: {np.mean(episode_lens)}")
@@ -64,7 +64,6 @@ class PPO():
                     m_state_values = self.get_state_values(m_obs)
                     m_advantage = m_rtgs - m_state_values.detach()
                     m_masks = batch_masks[mbatch_indices]
-                    m_entropies = batch_entropies[mbatch_indices]
 
                     # normalize advantage to reduce variance
                     m_advantage = (m_advantage - torch.mean(m_advantage))/ torch.std(m_advantage) + 1e-10
@@ -102,7 +101,7 @@ class PPO():
         batch_log_probs = []
         batch_shortest_paths = []
         batch_masks = []
-        batch_entropies = []
+        # batch_entropies = []
 
         # we need seperate arrays for episode rewards to aid reward-to-go calculations
         episode_rew = []
@@ -112,12 +111,12 @@ class PPO():
         while True:
             batch_obs.append(obs)
             batch_masks.append(action_mask)
-            action, log_prob, entropy= self.get_action(obs, action_mask)
+            action, log_prob= self.get_action(obs, action_mask)
             obs, action_mask, reward,done = self.maze.step(action)
             # print(f"action: {action}, prob: {torch.exp(log_prob)}")
             episode_rew.append(reward)
             batch_log_probs.append(log_prob)
-            batch_entropies.append(entropy)
+            # batch_entropies.append(entropy)
             batch_act.append(action)
             total_timesteps += 1
             # print(f"{self.maze.agent.x}, {self.maze.agent.y}")
@@ -134,55 +133,58 @@ class PPO():
         batch_obs = torch.as_tensor(batch_obs, dtype= torch.float32)
         batch_act = torch.as_tensor(batch_act, dtype= torch.float32)
         batch_log_probs = torch.as_tensor(batch_log_probs, dtype= torch.float32)
-        batch_entropies = torch.as_tensor(batch_entropies, dtype= torch.float32)
+        # batch_entropies = torch.as_tensor(batch_entropies, dtype= torch.float32)
         batch_masks = torch.as_tensor(batch_masks, dtype=torch.float32)
 
-        return batch_obs, batch_act, batch_log_probs, batch_rew, batch_shortest_paths, episode_lens, batch_entropies, batch_masks
+        return batch_obs, batch_act, batch_log_probs, batch_rew, batch_shortest_paths, episode_lens, batch_masks
     
     def get_log_probs(self, batch_obs, batch_actions, batch_masks):
 
-        batch_moves, batch_marks = batch_actions[:,0], batch_actions[:,1]
-        move_logits, mark_logits = self.actor(batch_obs)
+        batch_moves, batch_marks, batch_signals = batch_actions[:,0], batch_actions[:,1], batch_actions[:,2]
+        move_logits, mark_logits, signal_logits = self.actor(batch_obs)
         
-        move_logits.masked_fill_(~torch.as_tensor(batch_masks[:, 0:4], dtype=torch.bool), float('-inf'))
+        move_logits.masked_fill_(~torch.as_tensor(batch_masks[:, 0:5], dtype=torch.bool), float('-inf'))
         distribution = torch.distributions.Categorical(logits=move_logits)  
         move_probs = distribution.log_prob(batch_moves)
 
         mark_logits = mark_logits.reshape((self.mbatch_size,))
-        mark_logits.masked_fill_(~torch.as_tensor(batch_masks[:, 4], dtype=torch.bool), float('-inf'))
+        mark_logits.masked_fill_(~torch.as_tensor(batch_masks[:, 5], dtype=torch.bool), float('-inf'))
         mark_prob = torch.sigmoid(mark_logits)
         mark_prob = torch.where(torch.as_tensor(batch_marks, dtype=torch.bool), mark_prob, 1 - mark_prob)
         
+        signal_logits = signal_logits.reshape((self.mbatch_size,))
+        signal_logits.masked_fill_(~torch.as_tensor(batch_masks[:, 6], dtype=torch.bool), float('-inf'))
+        signal_prob = torch.sigmoid(signal_logits)
+        signal_prob = torch.where(torch.as_tensor(batch_signals, dtype=torch.bool), signal_prob, 1 - signal_prob)
+        
         # calculating log prob
-        log_probs = move_probs + torch.log(mark_prob)
+        log_probs = move_probs + torch.log(mark_prob) + torch.log(signal_prob)
         # print(f"{move_probs} + {torch.log(mark_prob)} = {log_probs}")
-
         return log_probs
 
     def get_action(self, obs, action_mask):
-        move_logits, mark_logits = self.actor(obs)
+        move_logits, mark_logits, signal_logits = self.actor(obs)
         
         # sampling move
-        adjusted_logits = torch.where(torch.as_tensor(action_mask[0:4], dtype=torch.bool), move_logits, torch.tensor(-float('inf')))
+        adjusted_logits = torch.where(torch.as_tensor(action_mask[0:5], dtype=torch.bool), move_logits, torch.tensor(-float('inf')))
         distribution = torch.distributions.Categorical(logits=adjusted_logits)
         move = distribution.sample()
-        move_probs = distribution.probs
         
         # sampling mark
-        mark_prob = torch.sigmoid(mark_logits) if action_mask[4] == True else torch.tensor(0,dtype=torch.float32)
+        mark_prob = torch.sigmoid(mark_logits) if action_mask[5] == True else torch.tensor(0,dtype=torch.float32)
         mark = torch.bernoulli(mark_prob)
             # p(marking) = mark prob, p(not marking) = 1 - p(marking)
         mark_prob = mark_prob if mark == 1 else 1-mark_prob
-   
+
+        # sampling signal
+        signal_prob = torch.sigmoid(signal_logits) if action_mask[6] == True else torch.tensor(0,dtype=torch.float32)
+        signal = torch.bernoulli(signal_prob)
+        signal_prob = signal_prob if signal == 1 else 1-signal_prob
         
-        # calculating log prob
-        # print(f"{torch.exp(distribution.log_prob(move))} + {torch.exp(torch.log(mark_prob))}")
-        log_prob = distribution.log_prob(move) + torch.log(mark_prob)
-        # print(log_prob)
-        # adding move to agent's memory
-        self.agent.memory.append(move.item())
-        
-        return (move.item(), mark), log_prob, distribution.entropy()
+
+        log_prob = distribution.log_prob(move) + torch.log(mark_prob) + torch.log(signal_prob)
+
+        return (move.item(), mark.item(), signal.item()), log_prob
     
     
     def get_state_values(self, batch_obs):

@@ -18,6 +18,8 @@ GREEN = (0, 255, 0)
 CELL_SIZE = 40
 AGENT_RADIUS = CELL_SIZE/2.2
 AGENT_EYE_RADIUS = AGENT_RADIUS//4
+SIGNAL_RADIUS = AGENT_RADIUS * 1.3
+SIGNAL_DURATION = 10
 
 TIMESTEP_LENGTH = 0.08 # USED WHEN RENDERING THE GAME
 
@@ -36,7 +38,8 @@ class Maze:
         self.shortest_path = None
         self.shortest_path_len = None
 
-        self.agent = agent.Agent(RED, self)
+        self.agent = agent.Agent(RED, 2, self)
+        self.agent_locations = {}
         # self.agent = Agent(16, 10, RED, self)
 
         self.max_timestep = max_timestep # amount of timesteps before truncation
@@ -66,18 +69,36 @@ class Maze:
         self.current_t += 1
         self.agent.total_steps+=1
         updated_estimates = False
-        move,mark = action[0], action[1]
-        
+        move,mark,signal = action[0], action[1], action[2]
         # action logic
         agent_ = self.agent
+        
+        # marking
         if mark == 1:
             self.layout[agent_.y][agent_.x] = agent_.tag
-        direction = (move + agent_.direction) % 4
-        x_dif, y_dif = agent.DELTAS[direction]
-        new_x, new_y = agent_.x + x_dif, agent_.y + y_dif
-        updated_estimates = agent_.move(new_x, new_y, direction)
-
         
+        # signalling
+        if signal == 1:
+            x = self.agent.x * CELL_SIZE + CELL_SIZE//2
+            y = self.agent.y * CELL_SIZE + CELL_SIZE//2
+            signal_center = (x,y)
+            self.agent.signal_origin = signal_center
+            self.agent.is_signalling = True 
+        
+        if self.agent.signal_time <= SIGNAL_DURATION and self.agent.is_signalling == True:
+            self.agent.signal_time += 1
+        else:
+            self.agent.signal_time = 0
+            self.agent.is_signalling = False
+            
+        # moving
+        if move != 4:
+            direction = (move + agent_.direction) % 4
+            x_dif, y_dif = agent.DELTAS[direction]
+            new_x, new_y = agent_.x + x_dif, agent_.y + y_dif
+            updated_estimates = agent_.move(new_x, new_y, direction)
+            self.agent.memory.append(move)
+
         # reward function and done logic
         reward = 0
         done = False
@@ -224,6 +245,7 @@ class Maze:
         pygame.draw.rect(self.screen, YELLOW, (self.end[0]*CELL_SIZE, self.end[1]*CELL_SIZE, CELL_SIZE, CELL_SIZE))
 
         self.draw_agent()
+        self.draw_signal(RED)
         pygame.display.flip()
 
     def draw_agent(self):
@@ -249,6 +271,18 @@ class Maze:
         pygame.draw.circle(self.screen, BLACK, eye_center1, AGENT_EYE_RADIUS)
         pygame.draw.circle(self.screen, BLACK, eye_center2, AGENT_EYE_RADIUS)
 
+    def draw_signal(self, color):
+        if self.agent.is_signalling == False:
+            return
+        signal_center = self.agent.signal_origin
+        outer_radius = SIGNAL_RADIUS*(self.agent.signal_time%4 + 1)
+        
+        ring_surface = pygame.Surface((outer_radius * 2, outer_radius * 2), pygame.SRCALPHA)
+        pygame.draw.circle(ring_surface, color, (outer_radius, outer_radius), outer_radius)
+        pygame.draw.circle(ring_surface, (0, 0, 0, 0), (outer_radius, outer_radius), outer_radius-CELL_SIZE/10)
+        self.screen.blit(ring_surface, (signal_center[0] - outer_radius, signal_center[1] - outer_radius))
+        
+    
     def get_shortest_path(self):
         start = self.start
         end = self.end
@@ -323,5 +357,5 @@ class Maze:
         pygame.quit()
 
 if __name__ == "__main__":
-    maze = Maze(rand_start=True, rand_sizes=True, rand_range=[15,15], hardcore=True)
+    maze = Maze(rand_start=True, rand_sizes=True, rand_range=[5,5], hardcore=True)
     maze.display_policy()
