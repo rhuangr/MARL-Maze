@@ -24,7 +24,7 @@ PALE_BLUE = pygame.Color("darkslategray1")
 YELLOW = pygame.Color("gold1")
 PALE_YELLOW = pygame.Color("khaki1")
 
-CELL_SIZE = 40
+CELL_SIZE = 60
 AGENT_RADIUS = CELL_SIZE/2.75
 AGENT_EYE_RADIUS = AGENT_RADIUS//3.5
 SIGNAL_RADIUS = AGENT_RADIUS * 1.3
@@ -50,7 +50,7 @@ class Maze:
 
         self.agents = (maze_agent.Agent(RED, PALE_RED, 2, self),
                        maze_agent.Agent(YELLOW, PALE_YELLOW, 3, self), maze_agent.Agent(BLUE, PALE_BLUE, 4, self))
-        self.agent_locations = {}
+        self.agent_positions = {}
         # self.agent = Agent(16, 10, RED, self)
 
         self.max_timestep = max_timestep # amount of timesteps before truncation
@@ -79,7 +79,7 @@ class Maze:
         # resetting agent related
         for agent in self.agents:
             agent.reset()
-            self.agent_locations[agent.tag] = self.start
+            self.agent_positions[agent.tag] = self.start
             agent_obs, agent_mask = agent.get_observations()
             obs.append(agent_obs)
             masks.append(agent_mask)
@@ -100,7 +100,7 @@ class Maze:
         reward = 0
         done = False
         for agent in self.agents:
-            if self.agent_locations[agent.tag] == self.end:
+            if self.agent_positions[agent.tag] == self.end:
                 count +=1
             else:
                 break
@@ -125,8 +125,8 @@ class Maze:
         
         # signalling
         if signal == 1:
-            x = agent.x * CELL_SIZE + CELL_SIZE//2
-            y = agent.y * CELL_SIZE + CELL_SIZE//2
+            x = agent.x * CELL_SIZE + CELL_SIZE/2
+            y = agent.y * CELL_SIZE + CELL_SIZE/2
             signal_center = (x,y)
             agent.signal_origin = signal_center
             agent.is_signalling = True 
@@ -143,7 +143,7 @@ class Maze:
             x_dif, y_dif = maze_agent.DELTAS[direction]
             new_x, new_y = agent.x + x_dif, agent.y + y_dif
             updated_estimates = agent.move(new_x, new_y, direction)
-            self.agent_locations[agent.tag] = (agent.x, agent.y)
+            self.agent_positions[agent.tag] = (agent.x, agent.y)
             agent.memory.append(move)
 
         observation, action_mask = agent.get_observations()
@@ -282,33 +282,81 @@ class Maze:
         # Draw end
         pygame.draw.rect(self.screen, GREEN, (self.end[0]*CELL_SIZE, self.end[1]*CELL_SIZE, CELL_SIZE, CELL_SIZE))
 
-        self.draw_agent()
+        self.draw_agents()
         self.draw_signal()
         pygame.display.flip()
 
-    def draw_agent(self):
+    def draw_agents(self):
+        
+        position_count = {}
         for agent in self.agents:
-            x = agent.x * CELL_SIZE + CELL_SIZE//2
-            y = agent.y * CELL_SIZE + CELL_SIZE//2
-            agent_center = (x,y)
+            position = self.agent_positions[agent.tag]
+            if (agent.x, agent.y) not in position_count:
+                position_count[position] = [agent.tag]
+            else:
+                position_count[position].append(agent.tag)
 
-            if agent.direction == 0:
-                eye_center1 = (x + CELL_SIZE//5, y - CELL_SIZE//5)
-                eye_center2 = (x - CELL_SIZE//5, y - CELL_SIZE//5)
-            elif agent.direction == 1:
-                eye_center1 = (x + CELL_SIZE//5, y + CELL_SIZE//5)
-                eye_center2 = (x + CELL_SIZE//5, y - CELL_SIZE//5)
-            elif agent.direction == 2:
-                eye_center1 = (x + CELL_SIZE//5, y + CELL_SIZE//5)
-                eye_center2 = (x - CELL_SIZE//5, y + CELL_SIZE//5)
-            elif agent.direction == 3:
-                eye_center1 = (x - CELL_SIZE//5, y + CELL_SIZE//5)
-                eye_center2 = (x - CELL_SIZE//5, y - CELL_SIZE//5)
+        for position in position_count:
+            x,y = position[0] * CELL_SIZE + CELL_SIZE//2, position[1] * CELL_SIZE + CELL_SIZE//2
+            agent_list = position_count[position]
+            count = 0
+            for tag in agent_list:
+                agent = self.agents[tag-2]
+                self.draw_one_agent(agent,x,y,count,len(agent_list))
+                count+=1
+                
+        # for agent in self.agents:
+        #     x = agent.x * CELL_SIZE + CELL_SIZE//2
+        #     y = agent.y * CELL_SIZE + CELL_SIZE//2
+        #     agent_center = (x,y)
 
-            pygame.draw.circle(self.screen, agent.color, agent_center, AGENT_RADIUS)
-            pygame.draw.circle(self.screen, BLACK, eye_center1, AGENT_EYE_RADIUS)
-            pygame.draw.circle(self.screen, BLACK, eye_center2, AGENT_EYE_RADIUS)
+        #     if agent.direction == 0:
+        #         eye_center1 = (x + CELL_SIZE//5, y - CELL_SIZE//5)
+        #         eye_center2 = (x - CELL_SIZE//5, y - CELL_SIZE//5)
+        #     elif agent.direction == 1:
+        #         eye_center1 = (x + CELL_SIZE//5, y + CELL_SIZE//5)
+        #         eye_center2 = (x + CELL_SIZE//5, y - CELL_SIZE//5)
+        #     elif agent.direction == 2:
+        #         eye_center1 = (x + CELL_SIZE//5, y + CELL_SIZE//5)
+        #         eye_center2 = (x - CELL_SIZE//5, y + CELL_SIZE//5)
+        #     elif agent.direction == 3:
+        #         eye_center1 = (x - CELL_SIZE//5, y + CELL_SIZE//5)
+        #         eye_center2 = (x - CELL_SIZE//5, y - CELL_SIZE//5)
 
+        #     pygame.draw.circle(self.screen, agent.color, agent_center, AGENT_RADIUS)
+            
+    def draw_one_agent(self,agent,x,y,count,length):
+        if length == 3:
+            if count == 0:
+                x -= CELL_SIZE/4
+                y -= CELL_SIZE/4
+            elif count == 1:
+                x += CELL_SIZE/4
+                y -= CELL_SIZE/4
+            elif count == 2:
+                y += CELL_SIZE/4      
+        elif length == 2:
+            if count == 0:
+                x -= CELL_SIZE/4
+            elif count == 1:
+                x += CELL_SIZE/4  
+        if agent.direction == 0:
+            eye_center1 = (x + CELL_SIZE//5, y - CELL_SIZE//5)
+            eye_center2 = (x - CELL_SIZE//5, y - CELL_SIZE//5)
+        elif agent.direction == 1:
+            eye_center1 = (x + CELL_SIZE//5, y + CELL_SIZE//5)
+            eye_center2 = (x + CELL_SIZE//5, y - CELL_SIZE//5)
+        elif agent.direction == 2:
+            eye_center1 = (x + CELL_SIZE//5, y + CELL_SIZE//5)
+            eye_center2 = (x - CELL_SIZE//5, y + CELL_SIZE//5)
+        elif agent.direction == 3:
+            eye_center1 = (x - CELL_SIZE//5, y + CELL_SIZE//5)
+            eye_center2 = (x - CELL_SIZE//5, y - CELL_SIZE//5)
+        
+        pygame.draw.circle(self.screen, agent.color, (x,y), AGENT_RADIUS)
+        pygame.draw.circle(self.screen, BLACK, eye_center1, AGENT_EYE_RADIUS)
+        pygame.draw.circle(self.screen, BLACK, eye_center2, AGENT_EYE_RADIUS)
+        
     def draw_signal(self):
         for agent in self.agents:
             if agent.is_signalling == False:
@@ -403,5 +451,5 @@ class Maze:
         pygame.quit()
 
 if __name__ == "__main__":
-    maze = Maze(rand_start=True, rand_sizes=True, rand_range=[5,5], hardcore=True)
+    maze = Maze(rand_start=True, rand_sizes=True, rand_range=[2,2], hardcore=True)
     maze.display_policy()
