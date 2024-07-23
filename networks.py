@@ -74,7 +74,7 @@ class Projection(nn.Module):
             embedding = self.layers[i*3+1](embedding)
             embedding = self.activation()(self.layers[i*3+2](embedding))
             observations.append(embedding)
-        print(torch.cat(observations,dim=1).reshape(-1, FEATURE_AMOUNT, EMBEDDING_DIM).shape)
+        # print(torch.cat(observations,dim=1).reshape(-1, FEATURE_AMOUNT, EMBEDDING_DIM).shape)
         return torch.cat(observations,dim=1).reshape(-1, FEATURE_AMOUNT, EMBEDDING_DIM)
 
 class m_Attention(nn.Module):

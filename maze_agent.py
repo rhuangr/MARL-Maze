@@ -15,12 +15,15 @@ FEATURE_NAMES = ['direction', 'dead ends', 'visible unmarked cell', 'visible_end
 FEATURE_DIMS = [4, 4, 4, 4, 4, 4, 4, 4, 1, 2]
 
 class Agent:
-    def __init__(self, color, tag, maze, breaks=2):
+    def __init__(self, color, mark_color, tag, maze, breaks=2):
+
+        self.maze = maze
+        self.color = color
+        self.mark_color = mark_color
+        self.brain = PPO.PPO(self, maze)
+        
         self.x = 0
         self.y = 0
-        self.maze = maze
-        self.color = color      
-        self.brain = PPO.PPO(self, maze)
         self.direction = 2 # direction facing value at index of ['north', 'east, 'south', 'west']
         self.tag = tag
         
@@ -28,7 +31,7 @@ class Agent:
         self.is_signalling = False
         self.signal_origin = None
 
-        self.total_steps = 0
+        self.current_t = 0
         self.memory = deque([-1,-1,-1,-1], maxlen=4)
         self.average_exit = 5000
                 
@@ -38,6 +41,7 @@ class Agent:
         self.reset_estimates()
 
     def reset(self):
+        self.current_t = 0
         self.x, self.y = self.maze.start
         self.reset_estimates()
         self.direction = 2
@@ -70,7 +74,7 @@ class Agent:
         for feature in features:
             observations.extend(feature)
             
-        timestep = 1/self.average_exit * self.total_steps    
+        timestep = 1/self.average_exit * self.current_t    
         observations.append(timestep)
         
             # since this project relies on agents not knowing the layout of the maze
