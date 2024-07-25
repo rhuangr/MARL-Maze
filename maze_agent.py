@@ -16,14 +16,14 @@ FEATURE_NAMES = ['Direction', 'Dead Ends', 'Own Mark Visible', 'Others Mark Visi
 FEATURE_DIMS = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 4, 4, 1, 4, 1]
 
 class Agent:
-    def __init__(self, name, color, mark_color, tag, maze,):
+    def __init__(self, name, brain, color, mark_color, tag):
 
-        self.maze = maze
+        self.maze = None
         self.name = name
+        self.brain = brain
         self.color = color
         self.mark_color = mark_color
-        self.brain = PPO(self, maze)
-        
+
         self.x = 0
         self.y = 0
         self.direction = 2 # direction facing value at index of ['north', 'east, 'south', 'west']
@@ -59,8 +59,6 @@ class Agent:
         
     def get_action(self, obs, mask):
         action, prob= self.brain.get_action(obs, mask)
-        print(f"Name: {self.name} Action: {action}, Signalling: {self.is_signalling}")
-        
         return action, exp(prob)
     
     def move(self, x, y, direction):
@@ -82,7 +80,6 @@ class Agent:
         observations = []
         for feature in features:
             observations.extend(feature)
-        
             # since this project relies on agents not knowing the layout of the maze
             # rel x, rel y represent the agent's estimate of his current position x,y
         relative_x = (self.x - self.min_x_visited) / self.width_estimate
@@ -114,7 +111,7 @@ class Agent:
         action_mask.append(True)
         action_mask.append(mark_action_mask)
         action_mask.append(signal_action_mask)
-
+            
         return observations, action_mask
     
     # returns a list representing visible dead ends in all four directions
@@ -157,8 +154,7 @@ class Agent:
 
                 # if the direction in which the search is expanding in encounters a wall, then no need to keep expanding
                 elif neighbors[direction] == False:
-                    break
-        
+                    break 
             
         return dead_ends, move_action_mask
         
@@ -190,6 +186,8 @@ class Agent:
                 agents_in_position = self.maze.agent_positions.get((next_x, next_y))
                 if agents_in_position != None:
                     for agent in agents_in_position:
+                        if agent == self:
+                            continue
                         agent_direction = [0,0,0,0]
                         agent_direction[dir] = j*distance
                         visible_agents.extend(agent_direction)

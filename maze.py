@@ -1,25 +1,12 @@
 import pygame
 import random
 import time
-import maze_agent
 
-random.seed(3)
-# Initialize Pygame
-pygame.init()
+# random.seed(3)
 
-# Colors
 WHITE = pygame.Color("white") # EMPTY CELL COLOR
 BLACK =  pygame.Color("black") # WALL COLOR
 GREEN = pygame.Color("mediumspringgreen") # START, END, SHORTEST PATH COLOR
-
-RED =  pygame.Color("red")
-PALE_RED = pygame.Color("palevioletred1")
-
-BLUE = pygame.Color("royalblue1")
-PALE_BLUE = pygame.Color("darkslategray1")
-
-YELLOW = pygame.Color("gold1")
-PALE_YELLOW = pygame.Color("khaki1")
 
 CELL_SIZE = 40
 AGENT_RADIUS = CELL_SIZE/3
@@ -28,9 +15,10 @@ SIGNAL_RADIUS = AGENT_RADIUS * 1.2
 SIGNAL_DURATION = 10
 
 TIMESTEP_LENGTH = 0.08 # USED WHEN RENDERING THE GAME
+DELTAS = [(0, -1), (1, 0), (0, 1), (-1, 0)] # change in x,y after moving in respective cardinal direction
 
 class Maze:
-    def __init__(self, max_timestep = 5000, hardcore=False, rand_start=True,
+    def __init__(self, agents, max_timestep = 5000, hardcore=False, rand_start=True,
                  rand_sizes=True, rand_range=[6,12], default_size = [8,8]):
 
         # maze characteristics
@@ -43,11 +31,13 @@ class Maze:
         self.end = None
         self.shortest_path = None
         self.shortest_path_len = None
+        self.exit_first_found = False
         self.current_t = 0
 
-        self.agents = (maze_agent.Agent('RED', RED, PALE_RED, 2, self),
-                       maze_agent.Agent('YELLOW', YELLOW, PALE_YELLOW, 3, self),
-                       maze_agent.Agent('BLUE',BLUE, PALE_BLUE, 4, self))
+        self.agents = agents
+        for agent in self.agents:
+            agent.maze = self
+            agent.brain.maze = self
         self.agent_positions = {}
         # self.agent = Agent(16, 10, RED, self)
 
@@ -68,7 +58,6 @@ class Maze:
         if self.rand_sizes == True:
             self.height = random.randint(self.rand_range[0], self.rand_range[1]) * 2 - 1
             self.width = random.randint(self.rand_range[0], self.rand_range[1]) * 2 - 1
-
         self.layout = [[1 for i in range(self.width)] for j in range(self.height)]
         self.build_maze()
 
@@ -80,7 +69,8 @@ class Maze:
             agent_obs, agent_mask = agent.get_observations()
             obs.append(agent_obs)
             masks.append(agent_mask)
-        self.agent_positions[self.start] = list(self.agents)  
+        self.agent_positions[self.start] = list(self.agents)
+  
         return obs, masks
     
     def step(self, action):
@@ -114,9 +104,11 @@ class Maze:
         if len(self.agent_positions) == 1 and self.end in self.agent_positions:
             reward = 1
             done = True
-
         elif self.current_t > self.max_timestep:
             done = True 
+        elif self.exit_first_found == False and self.end in self.agent_positions:
+            reward = 0.5
+            self.exit_first_found == True
         
         return obs, action_masks, reward, done
     
@@ -143,7 +135,7 @@ class Maze:
         # moving
         if move != 4: # if move action chosen is not to stand still
             direction = (move + agent.direction) % 4
-            x_dif, y_dif = maze_agent.DELTAS[direction]
+            x_dif, y_dif = DELTAS[direction]
             new_x, new_y = agent.x + x_dif, agent.y + y_dif
             updated_estimates = agent.move(new_x, new_y, direction)
             agent.memory.append(move)
@@ -209,7 +201,7 @@ class Maze:
         x, y = cell
         neighbors = []
 
-        for x_dif, y_dif in maze_agent.DELTAS:
+        for x_dif, y_dif in DELTAS:
             neighbor_x, neighbor_y = x + x_dif*2, y + y_dif*2
 
             if (self.is_valid_cell(neighbor_x, neighbor_y) and self.layout[neighbor_y][neighbor_x] == 1):
@@ -365,7 +357,7 @@ class Maze:
             if (x, y) == end:
                 return path 
 
-            for x_dif, y_dif in maze_agent.DELTAS: 
+            for x_dif, y_dif in DELTAS: 
                 next_x, next_y = x + x_dif, y + y_dif
                 if (self.is_valid_cell(next_x, next_y) and self.layout[next_y][next_x] == 0 and (next_x, next_y) not in visited):
                     visited.add((next_x, next_y))
@@ -384,7 +376,7 @@ class Maze:
         pygame.display.set_caption("Multi Agent Maze")
 
     def display_policy(self):
-
+        pygame.init()
         obs, masks = self.reset()
         self.set_screen()
         self.draw_maze()
@@ -434,5 +426,7 @@ class Maze:
         pygame.quit()
 
 if __name__ == "__main__":
-    maze = Maze(rand_start=False, rand_sizes=True, rand_range=[2,2], hardcore=False)
+    # Initialize Pygame
+    
+    maze = Maze(rand_start=False, rand_sizes=True, rand_range=[10,10], hardcore=False)
     maze.display_policy()

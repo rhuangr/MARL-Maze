@@ -10,26 +10,23 @@ FEATURE_AMOUNT = len(FEATURE_DIMS)
 OBS_SPACE = sum(FEATURE_DIMS)
 EMBEDDING_DIM = 40
 
-class Brain(nn.Module):
+class Actor(nn.Module):
     # note: layer size does not include first layer since it is static
-    def __init__(self, actor=True, hidden_sizes=[164,164,164,164,164], activation=nn.ReLU):
-        super(Brain, self).__init__()
+    def __init__(self, hidden_sizes=[164,164,164,164,164], activation=nn.ReLU):
+        super(Actor, self).__init__()
         self.projection = Projection()
         self.attention = m_Attention()
         self.layers = nn.ModuleList()
         self.activation = activation
-        self.actor = actor
+        
         # dynamic layer creation
         self.layers.append(nn.Linear(FEATURE_AMOUNT * EMBEDDING_DIM, hidden_sizes[0]))     
         for i in range(len(hidden_sizes)-1):
             self.layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i+1]))
             
-        if actor:
-            self.move_head = nn.Linear(hidden_sizes[-1],5)
-            self.mark_head = nn.Linear(hidden_sizes[-1],1)
-            self.signal_head = nn.Linear(hidden_sizes[-1], 1)
-        else:
-            self.layers.append(nn.Linear(hidden_sizes[-1], 1))
+        self.move_head = nn.Linear(hidden_sizes[-1],5)
+        self.mark_head = nn.Linear(hidden_sizes[-1],1)
+        self.signal_head = nn.Linear(hidden_sizes[-1], 1)
         
         self.optimizer = Adam(self.parameters(), lr = 0.0001)
         
@@ -41,15 +38,12 @@ class Brain(nn.Module):
         for i in range(len(self.layers)-1):
             x = self.activation()(self.layers[i](x))
             
-        if self.actor:
-            x = self.activation()(self.layers[-1](x))
-            move = self.move_head(x)
-            mark = self.mark_head(x)
-            signal = self.signal_head(x)
-            return [move,mark,signal]
-        else:
-            x = self.layers[-1](x)
-            return x
+        x = self.activation()(self.layers[-1](x))
+        move = self.move_head(x)
+        mark = self.mark_head(x)
+        signal = self.signal_head(x)
+        return [move,mark,signal]
+
         # signal = self.signal_head(x)
 
 # transforms individual features into embeddings of equal size, then passed into attention layer
@@ -93,31 +87,34 @@ class m_Attention(nn.Module):
         context = torch.einsum("bij,bjk->bik",omega, values)
         return (input+context).reshape(-1,FEATURE_AMOUNT*EMBEDDING_DIM)
 
-
+class Critic(nn.Module):
+    def __init__(self, hidden_sizes = [128,128], activation = nn.ReLU):
+        super(Critic, self).__init__()
+        self.layers = nn.ModuleList()
+        self.activation = activation
+        
+        self.layers.append(nn.Linear(3*OBS_SPACE, hidden_sizes[0]))
+        for i in range(len(hidden_sizes)-1):
+            self.layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i+1]))
+        self.layers.append(nn.Linear(hidden_sizes[-1], 1))
+        self.optimizer = Adam(self.parameters(), lr = 0.0001)
+        
+    def forward(self, x):
+        x = torch.reshape(x, (-1, 3*OBS_SPACE))
+        for i in range(len(self.layers)-1):
+            x = self.activation()(self.layers[i](x))
+        x = self.layers[-1](x)
+        return x
+    
 if __name__ == "__main__":
     x = torch.as_tensor(([[1.,1,1,1, 0., 1., 0., 1., 1., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0.,
          0., 0., 0., 0.]]), dtype=torch.float32)
     y = torch.as_tensor([[[2,3],[3,4],[4,5]],[[1,2],[2,3],[3,4]]], dtype=torch.float32)
-    z = torch.as_tensor(([[1,2,3],[1,2,3]],[[1,2,3],[1,2,3]],[[1,2,3],[1,2,3]]), dtype=torch.float32)
+    z = torch.as_tensor(([[[1,2,3],[1,2,3]],[[1,2,3],[1,2,3]],[[1,2,3],[1,2,3]]]), dtype=torch.float32)
     
-    # test = nn.Linear(2,10)(y)
-    # print(test)
-    # test = Brain([25,25,4])
-    # a, b = test(x)
-    # print()
-    # print()
-    # print(a)
-    # print(b)
-    # print(test)
-    # # print(torch.softmax(test,dim=-1))
-    # x = torch.einsum("bij,bkj->bik",y,y)
-    # print(torch.einsum("bij,bkj->bik",y,y))
-    # print(torch.einsum("bij,bjk->bik",x,y))
     
     a = torch.as_tensor([[0.2,0.3,0.5],[0.2,0.3,0.5]], dtype=torch.float32)
     b = torch.as_tensor([[0.3, 0.7]], dtype=torch.float32)
-    
-    x = [1,2,3]
-    x =~x
-    print(x)
+    print(z.shape)
+    print(z[:,:,0].shape)
     # print(torch.einsum("ij,ik->ikj",a,b))
