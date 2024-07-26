@@ -69,6 +69,7 @@ class Maze:
             agent_obs, agent_mask = agent.get_observations()
             obs.append(agent_obs)
             masks.append(agent_mask)
+        self.agent_positions = {}
         self.agent_positions[self.start] = list(self.agents)
   
         return obs, masks
@@ -76,10 +77,13 @@ class Maze:
     def step(self, action):
         self.current_t += 1
         new_positions = []
+        total_updates = 0
         for i in range(len(self.agents)):
             agent_action = action[i]
             agent = self.agents[i]
-            new_position = self.single_agent_step(agent, agent_action)
+            new_x, new_y, updated_estimates = self.single_agent_step(agent, agent_action)
+            new_position = (new_x, new_y)
+            total_updates += updated_estimates
             new_positions.append((new_position,agent))
 
         self.agent_positions = {}
@@ -98,7 +102,7 @@ class Maze:
             action_masks.append(mask)
 
         # reward function and done logic
-        reward = 0
+        reward = 0 + updated_estimates*0.003
         done = False
 
         if len(self.agent_positions) == 1 and self.end in self.agent_positions:
@@ -107,7 +111,7 @@ class Maze:
         elif self.current_t > self.max_timestep:
             done = True 
         elif self.exit_first_found == False and self.end in self.agent_positions:
-            reward = 0.5
+            reward += 0.5
             self.exit_first_found == True
         
         return obs, action_masks, reward, done
@@ -140,7 +144,7 @@ class Maze:
             updated_estimates = agent.move(new_x, new_y, direction)
             agent.memory.append(move)
 
-        return agent.x,agent.y
+        return agent.x,agent.y,updated_estimates
 
     def is_valid_cell(self, x, y):
         return (0 <= x < self.width and 0 <= y < self.height)
@@ -175,7 +179,7 @@ class Maze:
             self.set_end()
             self.shortest_path = self.get_shortest_path()
             self.shortest_path_len = len(self.shortest_path) - 1
-            while self.shortest_path_len < 3:
+            while self.shortest_path_len < 2:
                 self.set_end()
                 self.shortest_path = self.get_shortest_path()
                 self.shortest_path_len = len(self.shortest_path) - 1

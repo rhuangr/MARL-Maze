@@ -1,14 +1,14 @@
 import torch
 import torch.nn as nn
 from torch.optim import Adam
-from numpy import sum,sqrt
+import numpy as np
 
 torch.manual_seed(3)
 # represents the dimensions of the feature vectors, used for dynamic network creation
 FEATURE_DIMS = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 4, 4, 1, 4, 1]
 FEATURE_AMOUNT = len(FEATURE_DIMS)
-OBS_SPACE = sum(FEATURE_DIMS)
-EMBEDDING_DIM = 40
+OBS_SPACE = np.sum(FEATURE_DIMS)
+EMBEDDING_DIM = 20
 
 class Actor(nn.Module):
     # note: layer size does not include first layer since it is static
@@ -43,7 +43,10 @@ class Actor(nn.Module):
         mark = self.mark_head(x)
         signal = self.signal_head(x)
         return [move,mark,signal]
-
+    
+    def initialize_weights(self):
+        for layer in self.layers:
+            nn.init.orthogonal_(layer.weight, gain=1.41)
         # signal = self.signal_head(x)
 
 # transforms individual features into embeddings of equal size, then passed into attention layer
@@ -83,7 +86,7 @@ class m_Attention(nn.Module):
         keys = self.keys(input)
         querys = self.querys(input)
         values = self.values(input)
-        omega = torch.softmax(torch.einsum("bij,bkj->bik",querys,keys)/sqrt(self.kq_dim), dim=-1)
+        omega = torch.softmax(torch.einsum("bij,bkj->bik",querys,keys)/torch.sqrt(self.kq_dim), dim=-1)
         context = torch.einsum("bij,bjk->bik",omega, values)
         return (input+context).reshape(-1,FEATURE_AMOUNT*EMBEDDING_DIM)
 
@@ -93,14 +96,15 @@ class Critic(nn.Module):
         self.layers = nn.ModuleList()
         self.activation = activation
         
-        self.layers.append(nn.Linear(3*OBS_SPACE, hidden_sizes[0]))
+        self.layers.append(nn.Linear(2, hidden_sizes[0]))
         for i in range(len(hidden_sizes)-1):
             self.layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i+1]))
         self.layers.append(nn.Linear(hidden_sizes[-1], 1))
         self.optimizer = Adam(self.parameters(), lr = 0.0001)
         
     def forward(self, x):
-        x = torch.reshape(x, (-1, 3*OBS_SPACE))
+        x = torch.as_tensor(x, dtype=torch.float32)
+        x = torch.reshape(x, (-1, 2))
         for i in range(len(self.layers)-1):
             x = self.activation()(self.layers[i](x))
         x = self.layers[-1](x)
@@ -115,6 +119,9 @@ if __name__ == "__main__":
     
     a = torch.as_tensor([[0.2,0.3,0.5],[0.2,0.3,0.5]], dtype=torch.float32)
     b = torch.as_tensor([[0.3, 0.7]], dtype=torch.float32)
-    print(z.shape)
-    print(z[:,:,0].shape)
     # print(torch.einsum("ij,ik->ikj",a,b))
+    net = Critic()
+    x = []
+    for i in range(8):
+        x.append(net([2,3]))
+    print(torch.tensor(x))
