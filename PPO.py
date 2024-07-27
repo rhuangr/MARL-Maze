@@ -11,12 +11,12 @@ ACTOR_PATH = 'actor.pth'
 CRITIC_PATH = 'critic.pth'
 
 class PPO():
-    def __init__(self, epochs=5000, batch_size=5000, discount_rate=0.99, lam=0.9,
-                  updates_per_batch=5, mbatch_size=64, clip=0.25, beta=0.05, max_grad=0.5):
+    def __init__(self, epochs=5000, batch_size=5000, discount_rate=0.99, lam=0.98,
+                  updates_per_batch=5, mbatch_size=1000, clip=0.2, beta=0.05, max_grad=0.5):
         
         self.maze = None
-        self.actor = Actor([180,180,180,180])
-        self.critic  = Critic(hidden_sizes=[264,264])
+        self.actor = Actor([164,164,164,164,164])
+        self.critic  = Critic(hidden_sizes=[64,64])
 
         self.epochs = epochs
         self.batch_size = batch_size
@@ -32,24 +32,19 @@ class PPO():
 
     def train(self):
         for epoch in range(self.epochs):
-            b_obs, b_actions, b_log_probs, b_rew, b_shortest_paths, episode_lens, b_masks, b_advs, b_vals = self.get_batch()
+            b_obs, b_actions, b_log_probs, b_shortest_paths, episode_lens, b_masks, b_advs, b_vals = self.get_batch()
             print(f"-------------------- Epoch #{epoch} --------------------")
             print(f"Mazes solved in current epoch: {len(episode_lens)}")
             print(f"Average Exit Time: {np.mean(episode_lens)}")
+            print(f"Best Exit Time: {np.min(episode_lens)} and Worst Exit Time: {np.max(episode_lens)}")
             print(f"Average Length of Shortest Path: {np.mean(b_shortest_paths)}")
             # print(f"Timesteps So Far: {t_so_far}", flush=True)
             # print(f"Iteration took: {delta_t} secs", flush=True)
             print(f"--------------------------------------------------", flush=True)
             print()
-            # print(f"Epoch {epoch+1}")
-            # for epoch in range(len(episode_lens)):
-            #     print(f"Run {epoch+1}: exit time:{episode_lens[epoch]}, shortest path length: {batch_shortest_paths[epoch]}")
-            # print()
-            b_rtgs = self.get_rtgs(b_rew)
-            b_advs = b_rtgs - b_vals.detach()
-            # rtgs = b_advs + b_vals.detach()
-            # normalize advantage to reduce variance
-            b_advs = (b_advs - torch.mean(b_advs))/ torch.std(b_advs) + 1e-10
+            
+            b_rtgs = b_advs + b_vals.detach()
+            b_advs = (b_advs - torch.mean(b_advs))/ (torch.std(b_advs) + 1e-10)
             index_list = np.arange(len(b_obs))
             np.random.shuffle(index_list)
 
@@ -66,29 +61,29 @@ class PPO():
                     m_state_values = self.get_state_values(m_obs)
                     m_advantage = b_advs[mbatch_indices]
                     m_masks = b_masks[mbatch_indices]
+                    
                     current_log_prob = 0
                     for i in range(len(self.maze.agents)):
                         current_log_prob += self.get_log_probs(i, m_obs, m_actions, m_masks)
-                    log_prob_ratios = torch.exp(current_log_prob - m_log_probs)
+                    prob_ratios = torch.exp(current_log_prob - m_log_probs)
 
-                    if start == 0 and update == 0:
-                        print(log_prob_ratios)
+                    # if start == 0 and update == 0:
+                    #     print(prob_ratios)
 
-                    surrogate1 = log_prob_ratios * m_advantage
-                    surrogate2 = torch.clamp(log_prob_ratios, 1-self.clip, 1+ self.clip) * m_advantage
+                    surrogate1 = prob_ratios * m_advantage
+                    surrogate2 = torch.clamp(prob_ratios, 1-self.clip, 1+ self.clip) * m_advantage
                     
                     # actor loss calculations
                     actor_loss = -torch.mean(torch.min(surrogate1, surrogate2))
-                    actor_loss = actor_loss #- self.beta * torch.mean(torch.as_tensor(m_entropies))
                     self.actor.optimizer.zero_grad()
-                    actor_grad_norm = torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad)
                     actor_loss.backward()
+                    actor_grad_norm = torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad)
                     self.actor.optimizer.step()
 
                     critic_loss = torch.nn.MSELoss()(m_state_values, m_rtgs)
                     self.critic.optimizer.zero_grad()
-                    critic_grad_norm = torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad)
                     critic_loss.backward()
+                    critic_grad_norm = torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad)
                     self.critic.optimizer.step()
                             
             self.save_parameters()
@@ -96,7 +91,6 @@ class PPO():
     def get_batch(self):
         
         batch_obs = []
-        batch_rew = []
         batch_act = []
         batch_log_probs = []
         batch_masks = []
@@ -106,7 +100,7 @@ class PPO():
         # used to display learning progress
         batch_shortest_paths = []
         episode_lens = []
-
+        
         episode_rew = []
         episode_vals = []
         episode_dones = []
@@ -116,7 +110,7 @@ class PPO():
         while True:
             batch_obs.append(obs)
             batch_masks.append(action_mask)
-
+            episode_vals.append(self.critic(obs))
             MA_actions = []
             MA_log_probs = 0
             for i in range(len(self.maze.agents)):
@@ -130,14 +124,12 @@ class PPO():
             batch_log_probs.append(torch.sum(MA_log_probs))
             batch_act.append(MA_actions)
             episode_rew.append(reward)
-            episode_vals.append(self.critic(obs))
             episode_dones.append(done)
 
             total_timesteps += 1
             if done:
                 batch_shortest_paths.append(self.maze.shortest_path_len)
                 obs, action_mask = self.maze.reset()
-                batch_rew.append(episode_rew)
                 episode_lens.append(len(episode_rew))
                 batch_vals.extend(episode_vals)
                 batch_advantages.extend(self.get_GAEs(episode_rew, episode_vals, episode_dones))
@@ -155,7 +147,7 @@ class PPO():
         batch_advantages = torch.as_tensor(batch_advantages, dtype=torch.float32)
         batch_vals = torch.as_tensor(batch_vals, dtype=torch.float32)
 
-        return (batch_obs, batch_act, batch_log_probs, batch_rew, batch_shortest_paths,
+        return (batch_obs, batch_act, batch_log_probs, batch_shortest_paths,
                  episode_lens, batch_masks, batch_advantages, batch_vals)
     
     def get_log_probs(self, i, batch_obs, batch_actions, batch_masks):
@@ -195,7 +187,7 @@ class PPO():
         mark_prob = mark_prob if mark == 1 else 1-mark_prob # p(marking) = mark prob, p(not marking) = 1 - p(marking)
 
         # sampling signal
-        signal_prob = torch.sigmoid(signal_logits) if action_mask[6] == True else torch.tensor(0,dtype=torch.float32)
+        signal_prob = torch.sigmoid(signal_logits) if action_mask[6] == True else torch.tensor([[0]],dtype=torch.float32)
         signal = torch.bernoulli(signal_prob)
         signal_prob = signal_prob if signal == 1 else 1-signal_prob
         

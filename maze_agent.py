@@ -17,7 +17,6 @@ FEATURE_DIMS = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 4, 4, 1, 4, 1]
 
 class Agent:
     def __init__(self, name, brain, color, mark_color, tag):
-
         self.maze = None
         self.name = name
         self.brain = brain
@@ -56,6 +55,7 @@ class Agent:
         self.is_signalling = False
         self.signal_origin = None
         self.knows_end = 0
+        self.end_direction = None
         
     def get_action(self, obs, mask):
         action, prob= self.brain.get_action(obs, mask)
@@ -67,7 +67,6 @@ class Agent:
         return self.estimate_maze(direction)
     
     def get_observations(self):
-        
         # start building the observation vector
         direction = [0,0,0,0]
         direction[self.direction] = 1
@@ -87,18 +86,19 @@ class Agent:
         observations.append(relative_x)
         observations.append(relative_y)
         
-        signal_direction = []
-        for agent in self.maze.agents:
-            if agent == self:
-                continue
-            if agent.is_signalling:
-                signal_direction.extend(self.get_direction(agent.signal_origin))
-            else:
-                signal_direction.extend([0,0,0,0])
+        signal_direction = [0,0,0,0,0,0,0,0]
+        # for agent in self.maze.agents:
+        #     if agent == self:
+        #         continue
+        #     if agent.is_signalling:
+        #         signal_direction.extend(self.get_direction(agent.signal_origin))
+        #     else:
+        #         signal_direction.extend([0,0,0,0])
 
         observations.extend(signal_direction)
         observations.append(self.knows_end)
         end_direction = [0,0,0,0] if self.knows_end == False else self.get_direction(self.maze.end)
+        self.end_direction = end_direction
         observations.extend(end_direction)
         timestep = 1/self.average_exit * self.current_t    
         observations.append(timestep)
@@ -116,7 +116,6 @@ class Agent:
     
     # returns a list representing visible dead ends in all four directions
     def get_dead_ends(self):
-        
         # binary representation of: is there a dead end in any clockwise cardinal directions, starting from north
         dead_ends = [0,0,0,0]
         neighbors = self.get_neighbors((self.x, self.y))
@@ -162,7 +161,7 @@ class Agent:
         visible_own_mark = [0,0,0,0]
         visible_others_mark = [0,0,0,0]
         visible_end = [0,0,0,0]
-        visible_agents = []
+        visible_agents = [1 for _ in range(4*(len(self.maze.agent_positions[(self.x, self.y)])-1))] 
         distance = 1/AGENT_VISION_RANGE
 
         for dir in range(len(DELTAS)):
@@ -180,6 +179,7 @@ class Agent:
                     break
                 
                 if (next_x, next_y) == self.maze.end:
+                    self.knows_end = 1
                     visible_end[dir] = j*distance
 
                 # visible agents feature
@@ -197,9 +197,8 @@ class Agent:
                 
                 elif self.maze.layout[next_y][next_x] > 1:
                     visible_others_mark[dir] = j*distance
-
+        # print(f"{self.name} + {visible_agents}")
         visible_agents.extend([0 for _ in range(8-len(visible_agents))])
-
         return visible_own_mark, visible_others_mark, visible_agents, visible_end
     
     def get_memory(self):
@@ -216,13 +215,13 @@ class Agent:
         
         direction = [0,0,0,0]
         if origin[1] > self.y:
-            direction[2] = 1
+            direction[(2-self.direction)%4] = 1
         elif origin[1] < self.y:
-            direction[0] = 1
+            direction[(0-self.direction)%4] = 1
         if origin[0] > self.x:
-            direction[1] = 1
+            direction[(1-self.direction)%4] = 1
         elif origin[0] < self.x:
-            direction[3] = 1
+            direction[(3-self.direction)%4] = 1
 
         return direction
     def estimate_maze(self, direction):

@@ -93,7 +93,7 @@ class m_Attention(nn.Module):
         return (input+context).reshape(-1,FEATURE_AMOUNT*EMBEDDING_DIM)
 
 class Critic(nn.Module):
-    def __init__(self, hidden_sizes = [128,128], activation = nn.Tanh):
+    def __init__(self, hidden_sizes = [128,128], activation = nn.ReLU):
         super(Critic, self).__init__()
         self.layers = nn.ModuleList()
         self.activation = activation
@@ -102,7 +102,8 @@ class Critic(nn.Module):
         for i in range(len(hidden_sizes)-1):
             self.layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i+1]))
         self.layers.append(nn.Linear(hidden_sizes[-1], 1))
-        self.optimizer = Adam(self.parameters(), lr = 0.0001)
+        self.initialize_weights()
+        self.optimizer = Adam(self.parameters(), lr = 0.0003)
         
     def forward(self, x):
         x = torch.as_tensor(x, dtype=torch.float32)
@@ -112,6 +113,10 @@ class Critic(nn.Module):
         x = self.layers[-1](x)
         return x
     
+    def initialize_weights(self):
+        for layer in self.layers:
+            nn.init.orthogonal_(layer.weight)
+        
 if __name__ == "__main__":
     x = torch.as_tensor(([[1.,1,1,1, 0., 1., 0., 1., 1., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0.,
          0., 0., 0., 0.]]), dtype=torch.float32)

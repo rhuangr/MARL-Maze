@@ -2,7 +2,6 @@ import pygame
 import random
 import time
 
-# random.seed(3)
 
 WHITE = pygame.Color("white") # EMPTY CELL COLOR
 BLACK =  pygame.Color("black") # WALL COLOR
@@ -18,7 +17,7 @@ TIMESTEP_LENGTH = 0.08 # USED WHEN RENDERING THE GAME
 DELTAS = [(0, -1), (1, 0), (0, 1), (-1, 0)] # change in x,y after moving in respective cardinal direction
 
 class Maze:
-    def __init__(self, agents, max_timestep = 2499, hardcore=False, rand_start=False,
+    def __init__(self, agents, max_timestep = 4998, hardcore=False, rand_start=False,
                  rand_sizes=False, rand_range=[6,12], default_size = [8,8]):
 
         # maze characteristics
@@ -61,6 +60,8 @@ class Maze:
             self.width = random.randint(self.rand_range[0], self.rand_range[1]) * 2 - 1
         self.layout = [[1 for i in range(self.width)] for j in range(self.height)]
         self.build_maze()
+        self.agent_positions = {}
+        self.agent_positions[self.start] = list(self.agents)
 
         obs = []
         masks = []
@@ -70,32 +71,30 @@ class Maze:
             agent_obs, agent_mask = agent.get_observations()
             obs.append(agent_obs)
             masks.append(agent_mask)
-        self.agent_positions = {}
-        self.agent_positions[self.start] = list(self.agents)
-  
+
         return obs, masks
     
     def step(self, action):
         self.current_t += 1
         new_positions = []
+        all_to_exit = True
         total_updates = 0
         for i in range(len(self.agents)):
             agent_action = action[i]
             agent = self.agents[i]
-            new_x, new_y, updated_estimates = self.single_agent_step(agent, agent_action)
+            new_x, new_y, updated_estimates, to_exit = self.single_agent_step(agent, agent_action)
             new_position = (new_x, new_y)
             total_updates += updated_estimates
+            all_to_exit = all_to_exit and to_exit
             new_positions.append((new_position,agent))
 
         self.agent_positions = {}
         for position, agent in new_positions:
-            if position == self.end:
-                agent.knows_end = 1
             if position in self.agent_positions:
                 self.agent_positions[position].append(agent)
             else:
                 self.agent_positions[position] = [agent]
-
+                
         obs, action_masks = [], []
         for agent in self.agents:
             observation, mask = agent.get_observations()
@@ -103,7 +102,7 @@ class Maze:
             action_masks.append(mask)
 
         # reward function and done logic
-        reward = 0 + updated_estimates*0.003
+        reward = 0 + updated_estimates*0.006 + all_to_exit*0.1
         done = False
 
         if len(self.agent_positions) == 1 and self.end in self.agent_positions:
@@ -111,9 +110,6 @@ class Maze:
             done = True
         elif self.current_t > self.max_timestep:
             done = True 
-        elif self.exit_first_found == False and self.end in self.agent_positions:
-            reward += 0.5
-            self.exit_first_found == True
         
         return obs, action_masks, reward, done
     
@@ -144,8 +140,10 @@ class Maze:
             new_x, new_y = agent.x + x_dif, agent.y + y_dif
             updated_estimates = agent.move(new_x, new_y, direction)
             agent.memory.append(move)
-
-        return agent.x,agent.y,updated_estimates
+            to_exit = True if agent.knows_end and agent.end_direction != [1,1,1,1] and agent.end_direction[move] == 1 else False
+        else:
+            to_exit = True if agent.knows_end and agent.end_direction == [1,1,1,1] else False
+        return agent.x,agent.y,updated_estimates,to_exit
 
     def is_valid_cell(self, x, y):
         return (0 <= x < self.width and 0 <= y < self.height)
@@ -180,7 +178,7 @@ class Maze:
             self.set_end()
             self.shortest_path = self.get_shortest_path()
             self.shortest_path_len = len(self.shortest_path) - 1
-            while self.shortest_path_len < 2:
+            while self.shortest_path_len < 3:
                 self.set_end()
                 self.shortest_path = self.get_shortest_path()
                 self.shortest_path_len = len(self.shortest_path) - 1
@@ -421,6 +419,7 @@ class Maze:
                     elif event.key == pygame.K_e:
                         update_env()
                     elif event.key == pygame.K_w:
+                        print(self.agent_positions)
                         for i in range(len(self.agents)):
                             self.agents[i].print_obs(obs[i])
                     elif event.key == pygame.K_SPACE:
