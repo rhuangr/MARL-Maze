@@ -11,12 +11,12 @@ ACTOR_PATH = 'actor.pth'
 CRITIC_PATH = 'critic.pth'
 
 class PPO():
-    def __init__(self, epochs=5000, batch_size=6000, discount_rate=0.99, lam=0.9,
+    def __init__(self, epochs=5000, batch_size=5000, discount_rate=0.99, lam=0.9,
                   updates_per_batch=5, mbatch_size=64, clip=0.25, beta=0.05, max_grad=0.5):
         
         self.maze = None
-        self.actor = Actor([200,200,200])
-        self.critic  = Critic(hidden_sizes=[64,64])
+        self.actor = Actor([180,180,180,180])
+        self.critic  = Critic(hidden_sizes=[264,264])
 
         self.epochs = epochs
         self.batch_size = batch_size
@@ -45,8 +45,9 @@ class PPO():
             # for epoch in range(len(episode_lens)):
             #     print(f"Run {epoch+1}: exit time:{episode_lens[epoch]}, shortest path length: {batch_shortest_paths[epoch]}")
             # print()
-            
-            rtgs = b_advs + b_vals.detach()
+            b_rtgs = self.get_rtgs(b_rew)
+            b_advs = b_rtgs - b_vals.detach()
+            # rtgs = b_advs + b_vals.detach()
             # normalize advantage to reduce variance
             b_advs = (b_advs - torch.mean(b_advs))/ torch.std(b_advs) + 1e-10
             index_list = np.arange(len(b_obs))
@@ -61,7 +62,7 @@ class PPO():
                     m_obs = b_obs[mbatch_indices]
                     m_actions = b_actions[mbatch_indices]
                     m_log_probs = b_log_probs[mbatch_indices]
-                    m_rtgs = rtgs[mbatch_indices]
+                    m_rtgs = b_rtgs[mbatch_indices]
                     m_state_values = self.get_state_values(m_obs)
                     m_advantage = b_advs[mbatch_indices]
                     m_masks = b_masks[mbatch_indices]
@@ -137,8 +138,8 @@ class PPO():
                 batch_shortest_paths.append(self.maze.shortest_path_len)
                 obs, action_mask = self.maze.reset()
                 batch_rew.append(episode_rew)
-                batch_vals.append(episode_vals)
                 episode_lens.append(len(episode_rew))
+                batch_vals.extend(episode_vals)
                 batch_advantages.extend(self.get_GAEs(episode_rew, episode_vals, episode_dones))
                 episode_rew = []
                 episode_vals = []
@@ -158,20 +159,19 @@ class PPO():
                  episode_lens, batch_masks, batch_advantages, batch_vals)
     
     def get_log_probs(self, i, batch_obs, batch_actions, batch_masks):
-
         batch_moves, batch_marks, batch_signals = batch_actions[:,i,0], batch_actions[:,i,1], batch_actions[:,i,2]
         move_logits, mark_logits, signal_logits = self.actor(batch_obs[:,i,:])
-        
+
         move_logits.masked_fill_(~torch.as_tensor(batch_masks[:,i,0:5], dtype=torch.bool), float('-inf'))
         distribution = torch.distributions.Categorical(logits=move_logits)  
         move_probs = distribution.log_prob(batch_moves)
 
-        mark_logits = mark_logits.reshape((self.mbatch_size,))
+        mark_logits = mark_logits.squeeze()
         mark_logits.masked_fill_(~torch.as_tensor(batch_masks[:,i,5], dtype=torch.bool), float('-inf'))
         mark_prob = torch.sigmoid(mark_logits)
         mark_prob = torch.where(torch.as_tensor(batch_marks, dtype=torch.bool), mark_prob, 1 - mark_prob)
         
-        signal_logits = signal_logits.reshape((self.mbatch_size,))
+        signal_logits = signal_logits.squeeze()
         signal_logits.masked_fill_(~torch.as_tensor(batch_masks[:,i,6], dtype=torch.bool), float('-inf'))
         signal_prob = torch.sigmoid(signal_logits)
         signal_prob = torch.where(torch.as_tensor(batch_signals, dtype=torch.bool), signal_prob, 1 - signal_prob)
@@ -217,7 +217,6 @@ class PPO():
                 delta = ep_rew[t] - ep_values[t]
             else:
                 delta = ep_rew[t] + self.discount_rate*ep_values[t+1]*(1-ep_dones[t+1]) - ep_values[t]
-            
             advantage = delta + self.discount_rate* self.lam * (1 - ep_dones[t]) * advantage
             advantages[t] = advantage
         return advantages

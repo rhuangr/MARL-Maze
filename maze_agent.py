@@ -105,7 +105,7 @@ class Agent:
 
         # start building the action mask
         mark_action_mask = True if self.maze.layout[self.y][self.x] != self.tag else False
-        signal_action_mask = False if self.is_signalling else True
+        signal_action_mask = False #if self.is_signalling else True
         action_mask = move_action_mask
             # we append true for the fifth action: stay still since agent can always stay still
         action_mask.append(True)

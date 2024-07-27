@@ -18,8 +18,8 @@ TIMESTEP_LENGTH = 0.08 # USED WHEN RENDERING THE GAME
 DELTAS = [(0, -1), (1, 0), (0, 1), (-1, 0)] # change in x,y after moving in respective cardinal direction
 
 class Maze:
-    def __init__(self, agents, max_timestep = 5000, hardcore=False, rand_start=True,
-                 rand_sizes=True, rand_range=[6,12], default_size = [8,8]):
+    def __init__(self, agents, max_timestep = 2499, hardcore=False, rand_start=False,
+                 rand_sizes=False, rand_range=[6,12], default_size = [8,8]):
 
         # maze characteristics
         self.width = default_size[0] * 2 - 1
@@ -57,6 +57,7 @@ class Maze:
 
         if self.rand_sizes == True:
             self.height = random.randint(self.rand_range[0], self.rand_range[1]) * 2 - 1
+            self.rand_range[0]
             self.width = random.randint(self.rand_range[0], self.rand_range[1]) * 2 - 1
         self.layout = [[1 for i in range(self.width)] for j in range(self.height)]
         self.build_maze()
@@ -250,6 +251,8 @@ class Maze:
         #         self.end = (temp_end[0], temp_end[1])
         #         break
 
+
+    # EVERYTHING BELOW RELATES ONLY TO RENDERING THE MAZE.
     def draw_maze(self):
         self.screen.fill(WHITE)
         tags = [agent.tag for agent in self.agents]
