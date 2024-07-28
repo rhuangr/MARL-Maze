@@ -5,14 +5,14 @@ import numpy as np
 
 torch.manual_seed(3)
 # represents the dimensions of the feature vectors, used for dynamic network creation
-FEATURE_DIMS = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 4, 4, 1, 4, 1]
+FEATURE_DIMS = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 4, 4, 1, 4, 2]
 FEATURE_AMOUNT = len(FEATURE_DIMS)
 OBS_SPACE = np.sum(FEATURE_DIMS)
 EMBEDDING_DIM = 20
 
 class Actor(nn.Module):
     # note: layer size does not include first layer since it is static
-    def __init__(self, hidden_sizes=[164,164,164,164,164], activation=nn.Tanh):
+    def __init__(self, hidden_sizes=[164,164,164,164,164], activation=nn.ReLU):
         super(Actor, self).__init__()
         self.projection = Projection()
         self.attention = m_Attention()
@@ -47,9 +47,10 @@ class Actor(nn.Module):
     def initialize_weights(self):
         for layer in self.layers:
             nn.init.orthogonal_(layer.weight)
-        nn.init.orthogonal_(self.move_head.weight)
-        nn.init.orthogonal_(self.mark_head.weight)
-        nn.init.orthogonal_(self.signal_head.weight)
+        with torch.no_grad():  
+            self.move_head.weight *= 0.01
+            self.mark_head.weight *= 0.01
+            self.signal_head.weight *= 0.01
 
 # transforms individual features into embeddings of equal size, then passed into attention layer
 class Projection(nn.Module):
@@ -88,26 +89,27 @@ class m_Attention(nn.Module):
         keys = self.keys(input)
         querys = self.querys(input)
         values = self.values(input)
-        omega = torch.softmax(torch.einsum("bij,bkj->bik",querys,keys)/np.sqrt(self.kq_dim), dim=-1)
+        logits = torch.einsum("bij,bkj->bik",querys,keys)/np.sqrt(self.kq_dim)
+        omega = torch.softmax(logits, dim=-1)
         context = torch.einsum("bij,bjk->bik",omega, values)
         return (input+context).reshape(-1,FEATURE_AMOUNT*EMBEDDING_DIM)
 
 class Critic(nn.Module):
-    def __init__(self, hidden_sizes = [128,128], activation = nn.ReLU):
+    def __init__(self, agent_amount, hidden_sizes = [128,128], activation = nn.ReLU):
         super(Critic, self).__init__()
         self.layers = nn.ModuleList()
         self.activation = activation
-        
-        self.layers.append(nn.Linear(3*OBS_SPACE, hidden_sizes[0]))
+        self.agent_amount = agent_amount
+        self.layers.append(nn.Linear(self.agent_amount*OBS_SPACE, hidden_sizes[0]))
         for i in range(len(hidden_sizes)-1):
             self.layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i+1]))
         self.layers.append(nn.Linear(hidden_sizes[-1], 1))
         self.initialize_weights()
-        self.optimizer = Adam(self.parameters(), lr = 0.0003)
+        self.optimizer = Adam(self.parameters(), lr = 0.0001)
         
     def forward(self, x):
         x = torch.as_tensor(x, dtype=torch.float32)
-        x = torch.reshape(x, (-1, 3*OBS_SPACE))
+        x = torch.reshape(x, (-1, self.agent_amount*OBS_SPACE))
         for i in range(len(self.layers)-1):
             x = self.activation()(self.layers[i](x))
         x = self.layers[-1](x)
@@ -127,5 +129,5 @@ if __name__ == "__main__":
     a = torch.as_tensor([[0.2,0.3,0.5],[0.2,0.3,0.5]], dtype=torch.float32)
     b = torch.as_tensor([[0.3, 0.7]], dtype=torch.float32)
     # print(torch.einsum("ij,ik->ikj",a,b))
-    for i in range(0, 53, 51):
-        print(i)
+    z[:,-1,:] = 0
+    print(z)

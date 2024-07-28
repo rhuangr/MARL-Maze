@@ -11,19 +11,19 @@ ACTOR_PATH = 'actor.pth'
 CRITIC_PATH = 'critic.pth'
 
 class PPO():
-    def __init__(self, epochs=5000, batch_size=5000, discount_rate=0.99, lam=0.98,
-                  updates_per_batch=5, mbatch_size=1000, clip=0.2, beta=0.05, max_grad=0.5):
+    def __init__(self, agent_amount, epochs=200, batch_size=17500, discount_rate=0.995, lam=0.9,
+                  updates_per_batch=5, clip=0.2, beta=0.05, max_grad=0.5):
         
         self.maze = None
-        self.actor = Actor([164,164,164,164,164])
-        self.critic  = Critic(hidden_sizes=[64,64])
+        self.actor = Actor([264,150,150,150,264])
+        self.critic  = Critic(agent_amount, hidden_sizes=[64,64])
 
         self.epochs = epochs
         self.batch_size = batch_size
         self.discount_rate = discount_rate
         self.lam = lam
         self.updates_per_batch = updates_per_batch
-        self.mbatch_size = mbatch_size
+        self.mbatch_size = self.batch_size//5
         self.clip = clip    
         self.beta = beta
         self.max_grad = max_grad
@@ -33,13 +33,13 @@ class PPO():
     def train(self):
         for epoch in range(self.epochs):
             b_obs, b_actions, b_log_probs, b_shortest_paths, episode_lens, b_masks, b_advs, b_vals = self.get_batch()
+            worst = np.max(episode_lens)
             print(f"-------------------- Epoch #{epoch} --------------------")
             print(f"Mazes solved in current epoch: {len(episode_lens)}")
             print(f"Average Exit Time: {np.mean(episode_lens)}")
+            print(f"Average Length Excluding Worst: {(np.sum(episode_lens) - worst)/(len(episode_lens)-1)}")
             print(f"Best Exit Time: {np.min(episode_lens)} and Worst Exit Time: {np.max(episode_lens)}")
             print(f"Average Length of Shortest Path: {np.mean(b_shortest_paths)}")
-            # print(f"Timesteps So Far: {t_so_far}", flush=True)
-            # print(f"Iteration took: {delta_t} secs", flush=True)
             print(f"--------------------------------------------------", flush=True)
             print()
             
@@ -128,18 +128,21 @@ class PPO():
 
             total_timesteps += 1
             if done:
+                print(f"maze len:{self.maze.shortest_path_len}, exitted in: {len(episode_rew)}")
                 batch_shortest_paths.append(self.maze.shortest_path_len)
                 obs, action_mask = self.maze.reset()
                 episode_lens.append(len(episode_rew))
                 batch_vals.extend(episode_vals)
                 batch_advantages.extend(self.get_GAEs(episode_rew, episode_vals, episode_dones))
+                # self.get_rtgs([episode_rew])
+                
                 episode_rew = []
                 episode_vals = []
                 episode_dones = []
                 
                 if total_timesteps > self.batch_size:
                     break
-            
+        print()
         batch_obs = torch.as_tensor(batch_obs, dtype= torch.float32)
         batch_act = torch.as_tensor(batch_act, dtype= torch.float32)
         batch_log_probs = torch.as_tensor(batch_log_probs, dtype= torch.float32)
@@ -177,6 +180,10 @@ class PPO():
         move_logits, mark_logits, signal_logits = self.actor(obs)
 
         # sampling move
+        # print(obs)
+        # print(move_logits)
+        # print(action_mask[0:5])
+        # print(self.actor.layers[-1].weight)
         adjusted_logits = torch.where(torch.as_tensor(action_mask[0:5], dtype=torch.bool), move_logits, torch.tensor(-float('inf')))
         distribution = torch.distributions.Categorical(logits=adjusted_logits)
         move = distribution.sample()
@@ -222,8 +229,8 @@ class PPO():
                 discounted_rew = rew + self.discount_rate * discounted_rew
                 # original methods use insert(0, discounted_rew) which is 0(n)
                 rtgs.append(discounted_rew)  
-
         rtgs.reverse()
+        print(f'ep len: {len(rtgs)} total discounted reward" {rtgs[0]}')
         return torch.as_tensor(rtgs, dtype=torch.float32)
     
     def save_parameters(self):

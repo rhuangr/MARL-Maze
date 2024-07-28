@@ -17,7 +17,7 @@ TIMESTEP_LENGTH = 0.08 # USED WHEN RENDERING THE GAME
 DELTAS = [(0, -1), (1, 0), (0, 1), (-1, 0)] # change in x,y after moving in respective cardinal direction
 
 class Maze:
-    def __init__(self, agents, max_timestep = 4998, hardcore=False, rand_start=False,
+    def __init__(self, agents, max_timestep = 3500, hardcore=False, rand_start=False,
                  rand_sizes=False, rand_range=[6,12], default_size = [8,8]):
 
         # maze characteristics
@@ -31,6 +31,7 @@ class Maze:
         self.shortest_path = None
         self.shortest_path_len = None
         self.exit_first_found = False
+        self.exit_found = False
         self.current_t = 0
 
         self.agents = agents
@@ -77,15 +78,15 @@ class Maze:
     def step(self, action):
         self.current_t += 1
         new_positions = []
-        all_to_exit = True
         total_updates = 0
+        all_to_exit = True
         for i in range(len(self.agents)):
             agent_action = action[i]
             agent = self.agents[i]
-            new_x, new_y, updated_estimates, to_exit = self.single_agent_step(agent, agent_action)
+            new_x, new_y, updated_estimates = self.single_agent_step(agent, agent_action)
+            # all_to_exit = all_to_exit and to_exit
             new_position = (new_x, new_y)
             total_updates += updated_estimates
-            all_to_exit = all_to_exit and to_exit
             new_positions.append((new_position,agent))
 
         self.agent_positions = {}
@@ -102,22 +103,26 @@ class Maze:
             action_masks.append(mask)
 
         # reward function and done logic
-        reward = 0 + updated_estimates*0.006 + all_to_exit*0.1
+        reward = 0 + total_updates*0.004 #+ all_to_exit*0.004
+        # if self.exit_found == False and self.exit_first_found == True:
+        #     reward += 0.5
+        #     self.exit_found = True
         done = False
-
+        # print(f"all to exit: {all_to_exit}, reward: {reward}")
         if len(self.agent_positions) == 1 and self.end in self.agent_positions:
             reward = 1
             done = True
-        elif self.current_t > self.max_timestep:
+        elif self.current_t >= self.max_timestep:
             done = True 
         
         return obs, action_masks, reward, done
     
     def single_agent_step(self, agent, action):
+        
         agent.current_t = self.current_t
         updated_estimates = False
         move,mark,signal = action[0], action[1], action[2]
-        
+        # print(f"{agent.name}: Move: {move}")
         # marking
         if mark == 1:
             self.layout[agent.y][agent.x] = agent.tag
@@ -140,10 +145,10 @@ class Maze:
             new_x, new_y = agent.x + x_dif, agent.y + y_dif
             updated_estimates = agent.move(new_x, new_y, direction)
             agent.memory.append(move)
-            to_exit = True if agent.knows_end and agent.end_direction != [1,1,1,1] and agent.end_direction[move] == 1 else False
-        else:
-            to_exit = True if agent.knows_end and agent.end_direction == [1,1,1,1] else False
-        return agent.x,agent.y,updated_estimates,to_exit
+        #     to_exit = True if agent.knows_end and agent.end_direction != [1,1,1,1] and agent.end_direction[move] == 1 else False
+        # else:
+        #     to_exit = True if agent.knows_end and agent.end_direction == [1,1,1,1] else False
+        return agent.x,agent.y,updated_estimates,#to_exit
 
     def is_valid_cell(self, x, y):
         return (0 <= x < self.width and 0 <= y < self.height)
@@ -320,8 +325,8 @@ class Maze:
             if agent.is_signalling == False:
                 continue
             signal_center = self.get_cell_middle(agent.signal_origin[0], agent.signal_origin[1])
-            outer_radius = SIGNAL_RADIUS*(agent.signal_time%4 + 1)
-            color = agent.mark_color
+            outer_radius = SIGNAL_RADIUS*(agent.signal_time%5 + 1)
+            color = agent.color
             
             ring_surface = pygame.Surface((outer_radius * 2, outer_radius * 2), pygame.SRCALPHA)
             pygame.draw.circle(ring_surface, color, (outer_radius, outer_radius), outer_radius)

@@ -12,8 +12,8 @@ DELTAS = [(0, -1), (1, 0), (0, 1), (-1, 0)] # change in x,y after moving in resp
 
 FEATURE_NAMES = ['Direction', 'Dead Ends', 'Own Mark Visible', 'Others Mark Visible', 'Agent Visible',
                 'Agent Visible', 'End Visible', 'Move t-4', 'Move t-3', 'Move t-2', 'Move t-1',
-                'Relative Position', 'Signal Direction', 'Signal2 Direction', 'Knows End', 'End Direction', 'Timestep']
-FEATURE_DIMS = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 4, 4, 1, 4, 1]
+                'Relative Position', 'Signal Direction', 'Signal2 Direction', 'Knows End', 'End Direction', 'ID']
+FEATURE_DIMS = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 4, 4, 1, 4, 2]
 
 class Agent:
     def __init__(self, name, brain, color, mark_color, tag):
@@ -100,12 +100,13 @@ class Agent:
         end_direction = [0,0,0,0] if self.knows_end == False else self.get_direction(self.maze.end)
         self.end_direction = end_direction
         observations.extend(end_direction)
-        timestep = 1/self.average_exit * self.current_t    
-        observations.append(timestep)
+        id = [0,0]
+        id[2-self.tag] = 1
+        observations.extend(id)
 
         # start building the action mask
         mark_action_mask = True if self.maze.layout[self.y][self.x] != self.tag else False
-        signal_action_mask = False #if self.is_signalling else True
+        signal_action_mask = False if self.is_signalling else True
         action_mask = move_action_mask
             # we append true for the fifth action: stay still since agent can always stay still
         action_mask.append(True)

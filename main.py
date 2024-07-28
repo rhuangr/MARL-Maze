@@ -13,11 +13,9 @@ YELLOW = Color("gold1")
 PALE_YELLOW = Color("khaki1")
 
 
-brain = PPO()
+brain = PPO(agent_amount=2)
 agents = (Agent('RED', brain, RED, PALE_RED, 2),
-            Agent('YELLOW', brain, YELLOW, PALE_YELLOW, 3),
-            Agent('BLUE',brain, BLUE, PALE_BLUE, 4))
-maze = Maze(agents=agents, rand_sizes=True, rand_range=[2,2], rand_start=False, hardcore=False, default_size=[1,2]) 
-# brain.train()
-maze.display_policy()
-# 
+        Agent('BLUE',brain, BLUE, PALE_BLUE, 3))
+maze = Maze(agents=agents, max_timestep=2500, rand_sizes=True, rand_range=[5,8], rand_start=False, hardcore=True, default_size=[4,4]) 
+brain.train()
+# maze.display_policy()
