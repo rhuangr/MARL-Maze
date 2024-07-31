@@ -5,10 +5,11 @@ import numpy as np
 
 torch.manual_seed(3)
 # represents the dimensions of the feature vectors, used for dynamic network creation
-FEATURE_DIMS = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 4, 4, 1, 4, 2]
+FEATURE_DIMS = [4, 4, 4, 4, 4, 2, 4, 1, 4]
+
 FEATURE_AMOUNT = len(FEATURE_DIMS)
 OBS_SPACE = np.sum(FEATURE_DIMS)
-EMBEDDING_DIM = 20
+EMBEDDING_DIM = 15
 
 class Actor(nn.Module):
     # note: layer size does not include first layer since it is static
@@ -28,7 +29,7 @@ class Actor(nn.Module):
         self.mark_head = nn.Linear(hidden_sizes[-1],1)
         self.signal_head = nn.Linear(hidden_sizes[-1], 1)
         self.initialize_weights()
-        self.optimizer = Adam(self.parameters(), lr = 0.0001)
+        self.optimizer = Adam(self.parameters(), lr = 0.0002)
         
     def forward(self, x):
         x = torch.as_tensor(x, dtype=torch.float32).reshape(-1, OBS_SPACE)
@@ -48,9 +49,9 @@ class Actor(nn.Module):
         for layer in self.layers:
             nn.init.orthogonal_(layer.weight)
         with torch.no_grad():  
-            self.move_head.weight *= 0.01
-            self.mark_head.weight *= 0.01
-            self.signal_head.weight *= 0.01
+            self.move_head.weight *= 0.1
+            self.mark_head.weight *= 0.1
+            self.signal_head.weight *= 0.1
 
 # transforms individual features into embeddings of equal size, then passed into attention layer
 class Projection(nn.Module):
@@ -105,7 +106,7 @@ class Critic(nn.Module):
             self.layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i+1]))
         self.layers.append(nn.Linear(hidden_sizes[-1], 1))
         self.initialize_weights()
-        self.optimizer = Adam(self.parameters(), lr = 0.0001)
+        self.optimizer = Adam(self.parameters(), lr = 0.0002)
         
     def forward(self, x):
         x = torch.as_tensor(x, dtype=torch.float32)
@@ -129,5 +130,4 @@ if __name__ == "__main__":
     a = torch.as_tensor([[0.2,0.3,0.5],[0.2,0.3,0.5]], dtype=torch.float32)
     b = torch.as_tensor([[0.3, 0.7]], dtype=torch.float32)
     # print(torch.einsum("ij,ik->ikj",a,b))
-    z[:,-1,:] = 0
-    print(z)
+    x = [True]

@@ -15,7 +15,7 @@ class PPO():
                   updates_per_batch=5, clip=0.2, beta=0.05, max_grad=0.5):
         
         self.maze = None
-        self.actor = Actor([264,150,150,150,264])
+        self.actor = Actor([150,150,150,264])
         self.critic  = Critic(agent_amount, hidden_sizes=[64,64])
 
         self.epochs = epochs
@@ -23,7 +23,7 @@ class PPO():
         self.discount_rate = discount_rate
         self.lam = lam
         self.updates_per_batch = updates_per_batch
-        self.mbatch_size = self.batch_size//5
+        self.mbatch_size = self.batch_size//10
         self.clip = clip    
         self.beta = beta
         self.max_grad = max_grad
@@ -128,7 +128,7 @@ class PPO():
 
             total_timesteps += 1
             if done:
-                print(f"maze len:{self.maze.shortest_path_len}, exitted in: {len(episode_rew)}")
+                print(f"maze len: {self.maze.shortest_path_len}, exitted in: {len(episode_rew)}", flush=True)
                 batch_shortest_paths.append(self.maze.shortest_path_len)
                 obs, action_mask = self.maze.reset()
                 episode_lens.append(len(episode_rew))
@@ -143,10 +143,10 @@ class PPO():
                 if total_timesteps > self.batch_size:
                     break
         print()
-        batch_obs = torch.as_tensor(batch_obs, dtype= torch.float32)
-        batch_act = torch.as_tensor(batch_act, dtype= torch.float32)
+        batch_obs = torch.as_tensor(batch_obs, dtype=torch.float32)
+        batch_act = torch.as_tensor(batch_act, dtype=torch.float32)
         batch_log_probs = torch.as_tensor(batch_log_probs, dtype= torch.float32)
-        batch_masks = torch.as_tensor(batch_masks, dtype=torch.float32)
+        batch_masks = torch.as_tensor(batch_masks, dtype=torch.bool)
         batch_advantages = torch.as_tensor(batch_advantages, dtype=torch.float32)
         batch_vals = torch.as_tensor(batch_vals, dtype=torch.float32)
 
@@ -156,18 +156,17 @@ class PPO():
     def get_log_probs(self, i, batch_obs, batch_actions, batch_masks):
         batch_moves, batch_marks, batch_signals = batch_actions[:,i,0], batch_actions[:,i,1], batch_actions[:,i,2]
         move_logits, mark_logits, signal_logits = self.actor(batch_obs[:,i,:])
-
-        move_logits.masked_fill_(~torch.as_tensor(batch_masks[:,i,0:5], dtype=torch.bool), float('-inf'))
+        move_logits.masked_fill_(~batch_masks[:,i,0:5], float('-inf'))
         distribution = torch.distributions.Categorical(logits=move_logits)  
         move_probs = distribution.log_prob(batch_moves)
 
         mark_logits = mark_logits.squeeze()
-        mark_logits.masked_fill_(~torch.as_tensor(batch_masks[:,i,5], dtype=torch.bool), float('-inf'))
+        mark_logits.masked_fill_(~batch_masks[:,i,5], float('-inf'))
         mark_prob = torch.sigmoid(mark_logits)
         mark_prob = torch.where(torch.as_tensor(batch_marks, dtype=torch.bool), mark_prob, 1 - mark_prob)
         
         signal_logits = signal_logits.squeeze()
-        signal_logits.masked_fill_(~torch.as_tensor(batch_masks[:,i,6], dtype=torch.bool), float('-inf'))
+        signal_logits.masked_fill_(~batch_masks[:,i,6], float('-inf'))
         signal_prob = torch.sigmoid(signal_logits)
         signal_prob = torch.where(torch.as_tensor(batch_signals, dtype=torch.bool), signal_prob, 1 - signal_prob)
         
@@ -200,7 +199,7 @@ class PPO():
         
         # calculating jointlog probability of all moves
         log_prob = distribution.log_prob(move) + torch.log(mark_prob) + torch.log(signal_prob)
-        
+
         return [move.item(), mark.item(), signal.item()], log_prob
     
     

@@ -11,13 +11,13 @@ CELL_SIZE = 40
 AGENT_RADIUS = CELL_SIZE/3
 AGENT_EYE_RADIUS = AGENT_RADIUS/3
 SIGNAL_RADIUS = AGENT_RADIUS * 1.2
-SIGNAL_DURATION = 10
+SIGNAL_DURATION = 6
 
 TIMESTEP_LENGTH = 0.08 # USED WHEN RENDERING THE GAME
 DELTAS = [(0, -1), (1, 0), (0, 1), (-1, 0)] # change in x,y after moving in respective cardinal direction
 
 class Maze:
-    def __init__(self, agents, max_timestep = 3500, hardcore=False, rand_start=False,
+    def __init__(self, agents, max_timestep = 3500, difficulty=1, rand_start=False,
                  rand_sizes=False, rand_range=[6,12], default_size = [8,8]):
 
         # maze characteristics
@@ -48,7 +48,7 @@ class Maze:
         self.rand_sizes = rand_sizes
         self.rand_range = rand_range
         self.rand_start = rand_start
-        self.hardcore=hardcore
+        self.difficulty=difficulty
         self.default_size = default_size
         
 
@@ -103,12 +103,9 @@ class Maze:
             action_masks.append(mask)
 
         # reward function and done logic
-        reward = 0 + total_updates*0.004 #+ all_to_exit*0.004
-        # if self.exit_found == False and self.exit_first_found == True:
-        #     reward += 0.5
-        #     self.exit_found = True
+        reward = 0 + total_updates*0.001 #+ all_to_exit*0.004
         done = False
-        # print(f"all to exit: {all_to_exit}, reward: {reward}")
+        # print(f"all to exit: {total_updates}, reward: {reward}")
         if len(self.agent_positions) == 1 and self.end in self.agent_positions:
             reward = 1
             done = True
@@ -144,7 +141,7 @@ class Maze:
             x_dif, y_dif = DELTAS[direction]
             new_x, new_y = agent.x + x_dif, agent.y + y_dif
             updated_estimates = agent.move(new_x, new_y, direction)
-            agent.memory.append(move)
+            # agent.memory.append(move)
         #     to_exit = True if agent.knows_end and agent.end_direction != [1,1,1,1] and agent.end_direction[move] == 1 else False
         # else:
         #     to_exit = True if agent.knows_end and agent.end_direction == [1,1,1,1] else False
@@ -178,8 +175,8 @@ class Maze:
             else:
                 stack.pop()
 
-        # if not hardcore mode, choose a random end
-        if self.hardcore == False:
+        # if lowest/default difficulty, choose end randomly
+        if self.difficulty == 1:
             self.set_end()
             self.shortest_path = self.get_shortest_path()
             self.shortest_path_len = len(self.shortest_path) - 1
@@ -189,11 +186,11 @@ class Maze:
                 self.shortest_path_len = len(self.shortest_path) - 1
             return
         
-        # if hardcore mode enabled, set end 5 times and choose the end which yields the longest shortest path
+        # if difficulty higher than 1, choose end n amount of times equals to difficulty constant and choose the longest path
         max_length = 0
         lengths_ends = {}
         lengths_paths = {}
-        for _ in range(6):
+        for _ in range(self.difficulty):
             self.set_end()
             shortest_path = self.get_shortest_path()
             shortest_path_len = len(shortest_path)
@@ -230,12 +227,11 @@ class Maze:
     def set_end(self):
         coin = random.randint(0,1)
         x = 0 if coin == 0 else self.width-1
-        count = 1
         while True:
-            count+=1
-            # print(count)
             y = random.randint(0, self.height - 1)
-            if self.layout[y][x] == 0:
+            if (x,y) == self.start:
+                continue
+            elif self.layout[y][x] == 0:
                 self.end = (x, y)
                 break
             
@@ -439,5 +435,5 @@ class Maze:
 if __name__ == "__main__":
     # Initialize Pygame
     
-    maze = Maze(rand_start=False, rand_sizes=True, rand_range=[10,10], hardcore=False)
+    maze = Maze(rand_start=False, rand_sizes=True, rand_range=[10,10], difficulty=False)
     maze.display_policy()
