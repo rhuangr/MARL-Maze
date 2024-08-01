@@ -7,25 +7,26 @@ import os
 
 torch.manual_seed(3234)
 
-ACTOR_PATH = 'actor.pth'
-CRITIC_PATH = 'critic.pth'
+MODEL_PATH = 'PPO.pth'
 
 class PPO():
-    def __init__(self, agent_amount, epochs=200, batch_size=17500, discount_rate=0.995, lam=0.9,
-                  updates_per_batch=5, clip=0.2, beta=0.05, max_grad=0.5):
+    def __init__(self, agent_amount, epochs=200, batch_size=17500, lr = 0.0001, discount_rate=0.995, lam=0.9,
+                  updates_per_batch=5, clip=0.2, max_grad=0.5):
         
         self.maze = None
         self.actor = Actor([150,150,150,264])
         self.critic  = Critic(agent_amount, hidden_sizes=[64,64])
+        self.actor_optim = torch.optim.Adam(self.actor.parameters(),lr=lr)
+        self.critic_optim = torch.optim.Adam(self.critic.parameters(),lr = lr)
 
         self.epochs = epochs
         self.batch_size = batch_size
+        self.lr = lr
         self.discount_rate = discount_rate
         self.lam = lam
         self.updates_per_batch = updates_per_batch
         self.mbatch_size = self.batch_size//10
         self.clip = clip    
-        self.beta = beta
         self.max_grad = max_grad
 
         self.load_parameters()
@@ -75,16 +76,16 @@ class PPO():
                     
                     # actor loss calculations
                     actor_loss = -torch.mean(torch.min(surrogate1, surrogate2))
-                    self.actor.optimizer.zero_grad()
+                    self.actor_optim.zero_grad()
                     actor_loss.backward()
                     actor_grad_norm = torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad)
-                    self.actor.optimizer.step()
+                    self.actor_optim.step()
 
                     critic_loss = torch.nn.MSELoss()(m_state_values, m_rtgs)
-                    self.critic.optimizer.zero_grad()
+                    self.critic_optim.zero_grad()
                     critic_loss.backward()
                     critic_grad_norm = torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad)
-                    self.critic.optimizer.step()
+                    self.critic_optim.step()
                             
             self.save_parameters()
     
@@ -156,17 +157,17 @@ class PPO():
     def get_log_probs(self, i, batch_obs, batch_actions, batch_masks):
         batch_moves, batch_marks, batch_signals = batch_actions[:,i,0], batch_actions[:,i,1], batch_actions[:,i,2]
         move_logits, mark_logits, signal_logits = self.actor(batch_obs[:,i,:])
-        move_logits.masked_fill_(~batch_masks[:,i,0:5], float('-inf'))
+        move_logits.masked_fill_(~batch_masks[:,i,0:4], float('-inf'))
         distribution = torch.distributions.Categorical(logits=move_logits)  
         move_probs = distribution.log_prob(batch_moves)
 
         mark_logits = mark_logits.squeeze()
-        mark_logits.masked_fill_(~batch_masks[:,i,5], float('-inf'))
+        mark_logits.masked_fill_(~batch_masks[:,i,4], float('-inf'))
         mark_prob = torch.sigmoid(mark_logits)
         mark_prob = torch.where(torch.as_tensor(batch_marks, dtype=torch.bool), mark_prob, 1 - mark_prob)
         
         signal_logits = signal_logits.squeeze()
-        signal_logits.masked_fill_(~batch_masks[:,i,6], float('-inf'))
+        signal_logits.masked_fill_(~batch_masks[:,i,5], float('-inf'))
         signal_prob = torch.sigmoid(signal_logits)
         signal_prob = torch.where(torch.as_tensor(batch_signals, dtype=torch.bool), signal_prob, 1 - signal_prob)
         
@@ -183,17 +184,17 @@ class PPO():
         # print(move_logits)
         # print(action_mask[0:5])
         # print(self.actor.layers[-1].weight)
-        adjusted_logits = torch.where(torch.as_tensor(action_mask[0:5], dtype=torch.bool), move_logits, torch.tensor(-float('inf')))
+        adjusted_logits = torch.where(torch.as_tensor(action_mask[0:4], dtype=torch.bool), move_logits, torch.tensor(-float('inf')))
         distribution = torch.distributions.Categorical(logits=adjusted_logits)
         move = distribution.sample()
         
         # sampling mark
-        mark_prob = torch.sigmoid(mark_logits) if action_mask[5] == True else torch.tensor([[0]],dtype=torch.float32)
+        mark_prob = torch.sigmoid(mark_logits) if action_mask[4] == True else torch.tensor([[0]],dtype=torch.float32)
         mark = torch.bernoulli(mark_prob)
         mark_prob = mark_prob if mark == 1 else 1-mark_prob # p(marking) = mark prob, p(not marking) = 1 - p(marking)
 
         # sampling signal
-        signal_prob = torch.sigmoid(signal_logits) if action_mask[6] == True else torch.tensor([[0]],dtype=torch.float32)
+        signal_prob = torch.sigmoid(signal_logits) if action_mask[5] == True else torch.tensor([[0]],dtype=torch.float32)
         signal = torch.bernoulli(signal_prob)
         signal_prob = signal_prob if signal == 1 else 1-signal_prob
         
@@ -233,15 +234,21 @@ class PPO():
         return torch.as_tensor(rtgs, dtype=torch.float32)
     
     def save_parameters(self):
-        torch.save(self.actor.state_dict(), ACTOR_PATH)
-        torch.save(self.critic.state_dict(), CRITIC_PATH)
-        # print("parameters successfully saved")
+        torch.save({
+            'actor': self.actor.state_dict(),
+            'critic' : self.critic.state_dict(),
+            'actor_optim' : self.actor_optim.state_dict(),
+            'critic_optim': self.critic_optim.state_dict()}, MODEL_PATH)
+       
 
     def load_parameters(self):
-        if os.path.exists(ACTOR_PATH) and os.path.exists(CRITIC_PATH) and os.path.exists(ACTOR_PATH):
+        if os.path.exists(MODEL_PATH):
+            state_dicts = torch.load(MODEL_PATH)
+            self.actor.load_state_dict(state_dicts['actor'])
+            self.critic.load_state_dict(state_dicts['critic'])
+            self.actor_optim.load_state_dict(state_dicts['actor_optim'])
+            self.critic_optim.load_state_dict(state_dicts['critic_optim'])
             print("successfuly loaded existing parameters")
-            self.actor.load_state_dict(torch.load(ACTOR_PATH))
-            self.critic.load_state_dict(torch.load(CRITIC_PATH))
             return True
         return False
 

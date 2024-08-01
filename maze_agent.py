@@ -45,9 +45,9 @@ class Agent:
         self.width_estimate = 1
         self.height_estimate = 1
 
-    def reset(self):
+    def reset(self,x,y):
         self.current_t = 0
-        self.x, self.y = self.maze.start
+        self.x, self.y = x,y
         self.reset_estimates()
         self.direction = 2
         # self.memory = deque([-1,-1,-1,-1], maxlen=4)
@@ -60,7 +60,7 @@ class Agent:
         
     def get_action(self, obs, mask):
         action, prob= self.brain.get_action(obs, mask)
-        print(f'name: {self.name}')
+        # print(f'name: {self.name}')
         return action, exp(prob)
     
     def move(self, x, y, direction):
@@ -108,8 +108,8 @@ class Agent:
         mark_action_mask = True if self.maze.layout[self.y][self.x] != self.tag else False
         signal_action_mask = False if self.is_signalling else True
         action_mask = move_action_mask
-            # we append true for the fifth action: stay still since agent can always stay still
-        action_mask.append(True)
+        # we append true for the fifth action: stay still since agent can always stay still
+        # action_mask.append(True)
         action_mask.append(mark_action_mask)
         action_mask.append(signal_action_mask)
             

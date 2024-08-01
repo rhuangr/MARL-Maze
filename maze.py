@@ -56,9 +56,9 @@ class Maze:
         self.current_t = 0
 
         if self.rand_sizes == True:
-            self.height = random.randint(self.rand_range[0], self.rand_range[1]) * 2 - 1
-            self.rand_range[0]
-            self.width = random.randint(self.rand_range[0], self.rand_range[1]) * 2 - 1
+            size = random.randint(self.rand_range[0], self.rand_range[1]) * 2 - 1
+            self.height = size
+            self.width = size
         self.layout = [[1 for i in range(self.width)] for j in range(self.height)]
         self.build_maze()
         self.agent_positions = {}
@@ -68,7 +68,7 @@ class Maze:
         masks = []
         # resetting agent related
         for agent in self.agents:
-            agent.reset()
+            agent.reset(self.start[0], self.start[1])
             agent_obs, agent_mask = agent.get_observations()
             obs.append(agent_obs)
             masks.append(agent_mask)
@@ -103,7 +103,7 @@ class Maze:
             action_masks.append(mask)
 
         # reward function and done logic
-        reward = 0 + total_updates*0.001 #+ all_to_exit*0.004
+        reward = 0 #+ total_updates*0.001 + all_to_exit*0.004
         done = False
         # print(f"all to exit: {total_updates}, reward: {reward}")
         if len(self.agent_positions) == 1 and self.end in self.agent_positions:

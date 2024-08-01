@@ -25,11 +25,10 @@ class Actor(nn.Module):
         for i in range(len(hidden_sizes)-1):
             self.layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i+1]))
             
-        self.move_head = nn.Linear(hidden_sizes[-1],5)
+        self.move_head = nn.Linear(hidden_sizes[-1],4)
         self.mark_head = nn.Linear(hidden_sizes[-1],1)
         self.signal_head = nn.Linear(hidden_sizes[-1], 1)
         self.initialize_weights()
-        self.optimizer = Adam(self.parameters(), lr = 0.0002)
         
     def forward(self, x):
         x = torch.as_tensor(x, dtype=torch.float32).reshape(-1, OBS_SPACE)
@@ -106,7 +105,6 @@ class Critic(nn.Module):
             self.layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i+1]))
         self.layers.append(nn.Linear(hidden_sizes[-1], 1))
         self.initialize_weights()
-        self.optimizer = Adam(self.parameters(), lr = 0.0002)
         
     def forward(self, x):
         x = torch.as_tensor(x, dtype=torch.float32)
