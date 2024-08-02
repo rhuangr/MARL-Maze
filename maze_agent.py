@@ -11,8 +11,8 @@ DELTAS = [(0, -1), (1, 0), (0, 1), (-1, 0)] # change in x,y after moving in resp
 
 
 FEATURE_NAMES = ['Direction', 'Dead Ends', 'Own Mark Visible', 'Others Mark Visible', 'Agent Visible',
-                 'Relative Position', 'Signal Direction', 'Sees End', 'End Direction']
-FEATURE_DIMS = [4, 4, 4, 4, 4, 2, 4, 1, 4]
+                 'Move t-4', 'Move t-3', 'Move t-2', 'Move t-1', 'Relative Position', 'Sees End', 'End Direction', 'ID']
+FEATURE_DIMS = [4,4,4,4,4,4,4,4,4,2,1,4,2]
 
 class Agent:
     def __init__(self, name, brain, color, mark_color, tag):
@@ -30,11 +30,12 @@ class Agent:
         self.signal_time = 0 # determines the radius of signal shape drawn on screen
         self.is_signalling = False
         self.signal_origin = None
-        self.knows_end = 0
+
+        self.knows_end = False
         self.sees_end = False
 
         self.current_t = 0
-        # self.memory = deque([-1,-1,-1,-1], maxlen=4)
+        self.memory = deque([-1,-1,-1,-1], maxlen=4)
         self.average_exit = 5000
                 
         # agent's estimate of dimensions W x H of the maze
@@ -50,11 +51,11 @@ class Agent:
         self.x, self.y = x,y
         self.reset_estimates()
         self.direction = 2
-        # self.memory = deque([-1,-1,-1,-1], maxlen=4)
+        self.memory = deque([-1,-1,-1,-1], maxlen=4)
         self.signal_time = 0
         self.is_signalling = False
         self.signal_origin = None
-        self.knows_end = 0
+        self.knows_end = False
         self.sees_end = False
         self.end_direction = None
         
@@ -74,10 +75,10 @@ class Agent:
         direction[self.direction] = 1
         visible_own_mark, visible_others_mark, visible_agents, visible_end = self.get_visibility_features()
         dead_ends, move_action_mask = self.get_dead_ends()
-        # memory = self.get_memory()
+        memory = self.get_memory()
 
         features = [direction, dead_ends, visible_own_mark, visible_others_mark,
-                    visible_agents]
+                    visible_agents, memory]
         observations = []
         for feature in features:
             observations.extend(feature)
@@ -87,33 +88,33 @@ class Agent:
         relative_y = (self.max_y_visited - self.y) / self.height_estimate
         observations.append(relative_x)
         observations.append(relative_y)
-        signal_direction = []
-        for agent in self.maze.agents:
-            if agent == self:
-                continue
-            if agent.is_signalling:
-                signal_direction.extend(self.get_direction(agent.signal_origin))
-            else:
-                signal_direction.extend([0,0,0,0])
 
-        observations.extend(signal_direction)
+        # SIGNAL RELATED FEATURE
+        # signal_direction = []
+        # for agent in self.maze.agents:
+        #     if agent == self:
+        #         continue
+        #     if agent.is_signalling:
+        #         signal_direction.extend(self.get_direction(agent.signal_origin))
+        #     else:
+        #         signal_direction.extend([0,0,0,0])
+        # observations.extend(signal_direction)
+
         observations.append(self.sees_end)
-        end_direction = [0,0,0,0] if self.knows_end == 0 else self.get_direction(self.maze.end)
+        end_direction = [0,0,0,0] if self.knows_end == False else self.get_direction(self.maze.end)
         self.end_direction = end_direction
         observations.extend(end_direction)
         id = [0,0]
         id[2-self.tag] = 1
-        
+        observations.extend(id)
+
         # start building the action mask
         mark_action_mask = True if self.maze.layout[self.y][self.x] != self.tag else False
-        signal_action_mask = False if self.is_signalling else True
         action_mask = move_action_mask
-        # we append true for the fifth action: stay still since agent can always stay still
-        # action_mask.append(True)
         action_mask.append(mark_action_mask)
-        action_mask.append(signal_action_mask)
+        # action_mask.append(signal_action_mask)
             
-        return observations, action_mask
+        return np.array(observations, dtype=np.float16), action_mask
     
     # returns a list representing visible dead ends in all four directions
     def get_dead_ends(self):
@@ -182,7 +183,7 @@ class Agent:
                     break
                 
                 if (next_x, next_y) == self.maze.end:
-                    self.knows_end = 1
+                    self.knows_end = True
                     self.sees_end = True
                     visible_end[dir] = j*distance
 

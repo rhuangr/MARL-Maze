@@ -28,6 +28,7 @@ class Maze:
         self.layout = None
         self.start = None
         self.end = None
+        self.key = None
         self.shortest_path = None
         self.shortest_path_len = None
         self.exit_first_found = False
@@ -54,13 +55,8 @@ class Maze:
 
     def reset(self):
         self.current_t = 0
-
-        if self.rand_sizes == True:
-            size = random.randint(self.rand_range[0], self.rand_range[1]) * 2 - 1
-            self.height = size
-            self.width = size
-        self.layout = [[1 for i in range(self.width)] for j in range(self.height)]
         self.build_maze()
+
         self.agent_positions = {}
         self.agent_positions[self.start] = list(self.agents)
 
@@ -118,16 +114,16 @@ class Maze:
         
         agent.current_t = self.current_t
         updated_estimates = False
-        move,mark,signal = action[0], action[1], action[2]
+        move,mark = action[0], action[1]
         # print(f"{agent.name}: Move: {move}")
         # marking
         if mark == 1:
             self.layout[agent.y][agent.x] = agent.tag
         
         # signalling
-        if signal == 1:
-            agent.signal_origin = (agent.x, agent.y)
-            agent.is_signalling = True 
+        # if signal == 1:
+        #     agent.signal_origin = (agent.x, agent.y)
+        #     agent.is_signalling = True 
         
         if agent.signal_time <= SIGNAL_DURATION and agent.is_signalling == True:
             agent.signal_time += 1
@@ -141,7 +137,7 @@ class Maze:
             x_dif, y_dif = DELTAS[direction]
             new_x, new_y = agent.x + x_dif, agent.y + y_dif
             updated_estimates = agent.move(new_x, new_y, direction)
-            # agent.memory.append(move)
+            agent.memory.append(move)
         #     to_exit = True if agent.knows_end and agent.end_direction != [1,1,1,1] and agent.end_direction[move] == 1 else False
         # else:
         #     to_exit = True if agent.knows_end and agent.end_direction == [1,1,1,1] else False
@@ -151,6 +147,12 @@ class Maze:
         return (0 <= x < self.width and 0 <= y < self.height)
 
     def build_maze(self):
+        if self.rand_sizes == True:
+            size = random.randint(self.rand_range[0], self.rand_range[1]) * 2 - 1
+            self.height = size
+            self.width = size
+
+        self.layout = [[1 for i in range(self.width)] for j in range(self.height)]
         self.set_start()
         
         # building logic starts here
@@ -168,31 +170,19 @@ class Maze:
                 x1, y1 = current_cell
                 x2, y2 = next_cell
                 self.layout[(y1 + y2) // 2][(x1 + x2) // 2] = 0
-
                 stack.append(next_cell)
 
             # no valid neighbors, therefore we backtrack until a cell with valid neighbors to continue expanding
             else:
                 stack.pop()
 
-        # if lowest/default difficulty, choose end randomly
-        if self.difficulty == 1:
-            self.set_end()
-            self.shortest_path = self.get_shortest_path()
-            self.shortest_path_len = len(self.shortest_path) - 1
-            while self.shortest_path_len < 3:
-                self.set_end()
-                self.shortest_path = self.get_shortest_path()
-                self.shortest_path_len = len(self.shortest_path) - 1
-            return
-        
-        # if difficulty higher than 1, choose end n amount of times equals to difficulty constant and choose the longest path
+        # choose end n amount of times equals to difficulty constant and choose the longest path
         max_length = 0
         lengths_ends = {}
         lengths_paths = {}
         for _ in range(self.difficulty):
             self.set_end()
-            shortest_path = self.get_shortest_path()
+            shortest_path = self.get_shortest_path(self.start, self.end)
             shortest_path_len = len(shortest_path)
             max_length = max(max_length, shortest_path_len)
             lengths_ends[shortest_path_len] = self.end
@@ -201,6 +191,7 @@ class Maze:
         self.end = lengths_ends[max_length]
         self.shortest_path = lengths_paths[max_length]
         self.shortest_path_len = max_length
+        self.set_key()
 
     def get_neighbors(self, cell):
         x, y = cell
@@ -249,6 +240,34 @@ class Maze:
         #     if self.maze[temp_end[1]][temp_end[0]] == 0:
         #         self.end = (temp_end[0], temp_end[1])
         #         break
+        
+    def set_key(self):
+        min_path = 0 #min(self.height, self.width) * (max(self.height, self.width)/)
+        while True:
+            x,y = random.randint(0,self.width-1), random.randint(0,self.height-1)
+            if (self.layout[y][x] == 1 or (x,y) == self.end or (x,y) == self.start or 
+                len(self.get_shortest_path(self.end, (x,y))) < min_path or 
+                len(self.get_shortest_path(self.start, (x,y))) < min_path):
+                continue
+            self.key = (x,y)
+            break
+
+    def get_shortest_path(self, start, end):
+        stack = [(start, [start])]
+        visited = set([start])
+
+        while stack:
+            (x, y), path = stack.pop()
+            if (x, y) == end:
+                return path 
+
+            for x_dif, y_dif in DELTAS: 
+                next_x, next_y = x + x_dif, y + y_dif
+                if (self.is_valid_cell(next_x, next_y) and self.layout[next_y][next_x] == 0 and (next_x, next_y) not in visited):
+                    visited.add((next_x, next_y))
+                    stack.append(((next_x, next_y), path + [(next_x, next_y)]))
+
+        return None
 
 
     # EVERYTHING BELOW RELATES ONLY TO RENDERING THE MAZE.
@@ -271,7 +290,8 @@ class Maze:
     
         self.draw_flags() # draws flags for start and end
         self.draw_agents()
-        self.draw_signal() # draws signal if any
+        self.draw_key()
+        # self.draw_signal() # draws signal if any
         pygame.display.flip()
 
     def draw_agents(self):
@@ -323,7 +343,7 @@ class Maze:
             signal_center = self.get_cell_middle(agent.signal_origin[0], agent.signal_origin[1])
             outer_radius = SIGNAL_RADIUS*(agent.signal_time%5 + 1)
             color = agent.color
-            
+
             ring_surface = pygame.Surface((outer_radius * 2, outer_radius * 2), pygame.SRCALPHA)
             pygame.draw.circle(ring_surface, color, (outer_radius, outer_radius), outer_radius)
             pygame.draw.circle(ring_surface, (0, 0, 0, 0), (outer_radius, outer_radius), outer_radius-CELL_SIZE/10)
@@ -347,29 +367,20 @@ class Maze:
             ]
             pygame.draw.rect(self.screen, BLACK, (rect_x, rect_y, rect_width, rect_height))
             pygame.draw.polygon(self.screen, GREEN, triangle_points)
-    
+
+    def draw_key(self):
+        key_x, key_y = self.get_cell_middle(self.key[0], self.key[1])
+        key_y -= CELL_SIZE/4
+        key_color = pygame.Color('darkgoldenrod1')
+        pygame.draw.circle(self.screen, key_color, (key_x, key_y), CELL_SIZE/6)
+        pygame.draw.circle(self.screen, WHITE, (key_x, key_y), CELL_SIZE/11)
+        pygame.draw.rect(self.screen, key_color, (self.key[0]*CELL_SIZE+CELL_SIZE/2.2, self.key[1]*CELL_SIZE+CELL_SIZE/3, CELL_SIZE/10, CELL_SIZE/2))
+        pygame.draw.rect(self.screen, key_color, (self.key[0]*CELL_SIZE+CELL_SIZE/2.2, self.key[1]*CELL_SIZE+CELL_SIZE*2/3, CELL_SIZE/4.5, CELL_SIZE/10))
+        pygame.draw.rect(self.screen, key_color, (self.key[0]*CELL_SIZE+CELL_SIZE/2.2, self.key[1]*CELL_SIZE+CELL_SIZE/2, CELL_SIZE/4.5, CELL_SIZE/10))
+
     def get_cell_middle(self,x,y):
         x,y = x * CELL_SIZE + CELL_SIZE//2, y * CELL_SIZE + CELL_SIZE//2
         return x,y
-    
-    def get_shortest_path(self):
-        start = self.start
-        end = self.end
-        stack = [(start, [start])]
-        visited = set([start])
-
-        while stack:
-            (x, y), path = stack.pop()
-            if (x, y) == end:
-                return path 
-
-            for x_dif, y_dif in DELTAS: 
-                next_x, next_y = x + x_dif, y + y_dif
-                if (self.is_valid_cell(next_x, next_y) and self.layout[next_y][next_x] == 0 and (next_x, next_y) not in visited):
-                    visited.add((next_x, next_y))
-                    stack.append(((next_x, next_y), path + [(next_x, next_y)]))
-
-        return None
 
     def print_maze(self):
         for i in range(len(self.layout)):

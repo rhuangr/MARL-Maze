@@ -144,7 +144,7 @@ class PPO():
                 if total_timesteps > self.batch_size:
                     break
         print()
-        batch_obs = torch.as_tensor(batch_obs, dtype=torch.float32)
+        batch_obs = torch.as_tensor(batch_obs, dtype=torch.float16)
         batch_act = torch.as_tensor(batch_act, dtype=torch.float32)
         batch_log_probs = torch.as_tensor(batch_log_probs, dtype= torch.float32)
         batch_masks = torch.as_tensor(batch_masks, dtype=torch.bool)
@@ -155,8 +155,8 @@ class PPO():
                  episode_lens, batch_masks, batch_advantages, batch_vals)
     
     def get_log_probs(self, i, batch_obs, batch_actions, batch_masks):
-        batch_moves, batch_marks, batch_signals = batch_actions[:,i,0], batch_actions[:,i,1], batch_actions[:,i,2]
-        move_logits, mark_logits, signal_logits = self.actor(batch_obs[:,i,:])
+        batch_moves, batch_marks = batch_actions[:,i,0], batch_actions[:,i,1]
+        move_logits, mark_logits = self.actor(batch_obs[:,i,:])
         move_logits.masked_fill_(~batch_masks[:,i,0:4], float('-inf'))
         distribution = torch.distributions.Categorical(logits=move_logits)  
         move_probs = distribution.log_prob(batch_moves)
@@ -166,24 +166,20 @@ class PPO():
         mark_prob = torch.sigmoid(mark_logits)
         mark_prob = torch.where(torch.as_tensor(batch_marks, dtype=torch.bool), mark_prob, 1 - mark_prob)
         
-        signal_logits = signal_logits.squeeze()
-        signal_logits.masked_fill_(~batch_masks[:,i,5], float('-inf'))
-        signal_prob = torch.sigmoid(signal_logits)
-        signal_prob = torch.where(torch.as_tensor(batch_signals, dtype=torch.bool), signal_prob, 1 - signal_prob)
+        # signal_logits = signal_logits.squeeze()
+        # signal_logits.masked_fill_(~batch_masks[:,i,5], float('-inf'))
+        # signal_prob = torch.sigmoid(signal_logits)
+        # signal_prob = torch.where(torch.as_tensor(batch_signals, dtype=torch.bool), signal_prob, 1 - signal_prob)
         
         # calculating log prob
-        log_probs = move_probs + torch.log(mark_prob) + torch.log(signal_prob)
+        log_probs = move_probs + torch.log(mark_prob) #+ torch.log(signal_prob)
         # print(f"{move_probs} + {torch.log(mark_prob)} = {log_probs}")
         return log_probs
 
     def get_action(self, obs, action_mask): 
-        move_logits, mark_logits, signal_logits = self.actor(obs)
-
-        # sampling move
-        # print(obs)
-        # print(move_logits)
-        # print(action_mask[0:5])
-        # print(self.actor.layers[-1].weight)
+        move_logits, mark_logits = self.actor(obs)
+        
+        # sampling moves
         adjusted_logits = torch.where(torch.as_tensor(action_mask[0:4], dtype=torch.bool), move_logits, torch.tensor(-float('inf')))
         distribution = torch.distributions.Categorical(logits=adjusted_logits)
         move = distribution.sample()
@@ -194,14 +190,14 @@ class PPO():
         mark_prob = mark_prob if mark == 1 else 1-mark_prob # p(marking) = mark prob, p(not marking) = 1 - p(marking)
 
         # sampling signal
-        signal_prob = torch.sigmoid(signal_logits) if action_mask[5] == True else torch.tensor([[0]],dtype=torch.float32)
-        signal = torch.bernoulli(signal_prob)
-        signal_prob = signal_prob if signal == 1 else 1-signal_prob
+        # signal_prob = torch.sigmoid(signal_logits) if action_mask[5] == True else torch.tensor([[0]],dtype=torch.float32)
+        # signal = torch.bernoulli(signal_prob)
+        # signal_prob = signal_prob if signal == 1 else 1-signal_prob
         
         # calculating jointlog probability of all moves
-        log_prob = distribution.log_prob(move) + torch.log(mark_prob) + torch.log(signal_prob)
+        log_prob = distribution.log_prob(move) + torch.log(mark_prob)
 
-        return [move.item(), mark.item(), signal.item()], log_prob
+        return [move.item(), mark.item()], log_prob
     
     
     def get_state_values(self, batch_obs):
