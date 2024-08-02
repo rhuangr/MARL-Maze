@@ -3,9 +3,10 @@ import random
 import time
 
 
-WHITE = pygame.Color("white") # EMPTY CELL COLOR
-BLACK =  pygame.Color("black") # WALL COLOR
-GREEN = pygame.Color("mediumspringgreen") # START, END, SHORTEST PATH COLOR
+PATH_COLOR = pygame.Color("white")
+WALL_COLOR =  pygame.Color("black")
+FLAG_COLOR = pygame.Color("mediumspringgreen") 
+KEY_COLOR = pygame.Color('darkgoldenrod1')
 
 CELL_SIZE = 40
 AGENT_RADIUS = CELL_SIZE/3
@@ -31,7 +32,6 @@ class Maze:
         self.key = None
         self.shortest_path = None
         self.shortest_path_len = None
-        self.exit_first_found = False
         self.exit_found = False
         self.current_t = 0
 
@@ -59,6 +59,7 @@ class Maze:
 
         self.agent_positions = {}
         self.agent_positions[self.start] = list(self.agents)
+        self.exit_found = False
 
         obs = []
         masks = []
@@ -75,14 +76,18 @@ class Maze:
         self.current_t += 1
         new_positions = []
         total_updates = 0
-        all_to_exit = True
+        agents_have_key = False
+        first_exit_find = False
+        first_key_find = False
         for i in range(len(self.agents)):
             agent_action = action[i]
             agent = self.agents[i]
-            new_x, new_y, updated_estimates = self.single_agent_step(agent, agent_action)
+            new_x, new_y, updated_estimates, has_key, got_key = self.single_agent_step(agent, agent_action)
             # all_to_exit = all_to_exit and to_exit
             new_position = (new_x, new_y)
             total_updates += updated_estimates
+            agents_have_key = agents_have_key or has_key
+            first_key_find = first_key_find or got_key
             new_positions.append((new_position,agent))
 
         self.agent_positions = {}
@@ -97,12 +102,15 @@ class Maze:
             observation, mask = agent.get_observations()
             obs.append(observation)
             action_masks.append(mask)
-
+            if self.exit_found == False and agent.knows_end:
+                first_exit_find = agent.knows_end
+                self.exit_found = True
+        
         # reward function and done logic
-        reward = 0 #+ total_updates*0.001 + all_to_exit*0.004
+        reward = 0 + first_key_find*0.5 + first_exit_find*0.5#+ total_updates*0.001 + all_to_exit*0.004
         done = False
-        # print(f"all to exit: {total_updates}, reward: {reward}")
-        if len(self.agent_positions) == 1 and self.end in self.agent_positions:
+        # print(f" reward: {reward}")
+        if agents_have_key and len(self.agent_positions) == 1 and self.end in self.agent_positions :
             reward = 1
             done = True
         elif self.current_t >= self.max_timestep:
@@ -114,6 +122,7 @@ class Maze:
         
         agent.current_t = self.current_t
         updated_estimates = False
+        got_key = False
         move,mark = action[0], action[1]
         # print(f"{agent.name}: Move: {move}")
         # marking
@@ -137,11 +146,16 @@ class Maze:
             x_dif, y_dif = DELTAS[direction]
             new_x, new_y = agent.x + x_dif, agent.y + y_dif
             updated_estimates = agent.move(new_x, new_y, direction)
+            if (new_x, new_y) == self.key:
+                self.key = 0
+                agent.has_key = True
+                got_key = True
             agent.memory.append(move)
+            
         #     to_exit = True if agent.knows_end and agent.end_direction != [1,1,1,1] and agent.end_direction[move] == 1 else False
         # else:
         #     to_exit = True if agent.knows_end and agent.end_direction == [1,1,1,1] else False
-        return agent.x,agent.y,updated_estimates,#to_exit
+        return agent.x,agent.y,updated_estimates,agent.has_key, got_key #to_exit
 
     def is_valid_cell(self, x, y):
         return (0 <= x < self.width and 0 <= y < self.height)
@@ -242,7 +256,7 @@ class Maze:
         #         break
         
     def set_key(self):
-        min_path = 0 #min(self.height, self.width) * (max(self.height, self.width)/)
+        min_path = max(self.height, self.width) #min(self.height, self.width) * (max(self.height, self.width)/)
         while True:
             x,y = random.randint(0,self.width-1), random.randint(0,self.height-1)
             if (self.layout[y][x] == 1 or (x,y) == self.end or (x,y) == self.start or 
@@ -250,6 +264,7 @@ class Maze:
                 len(self.get_shortest_path(self.start, (x,y))) < min_path):
                 continue
             self.key = (x,y)
+            self.layout[y][x] = 5
             break
 
     def get_shortest_path(self, start, end):
@@ -272,7 +287,7 @@ class Maze:
 
     # EVERYTHING BELOW RELATES ONLY TO RENDERING THE MAZE.
     def draw_maze(self):
-        self.screen.fill(WHITE)
+        self.screen.fill(PATH_COLOR)
         tags = [agent.tag for agent in self.agents]
         mark_colors = [agent.mark_color for agent in self.agents]
         
@@ -280,17 +295,18 @@ class Maze:
             for x in range(self.width):
                 cell = self.layout[y][x]
                 if cell == 1:
-                    pygame.draw.rect(self.screen, BLACK, (x*CELL_SIZE, y*CELL_SIZE, CELL_SIZE, CELL_SIZE))
+                    pygame.draw.rect(self.screen, WALL_COLOR, (x*CELL_SIZE, y*CELL_SIZE, CELL_SIZE, CELL_SIZE))
                 elif cell in tags:
                     pygame.draw.rect(self.screen, mark_colors[tags.index(cell)], (x*CELL_SIZE, y*CELL_SIZE, CELL_SIZE, CELL_SIZE))
 
         for x,y in self.shortest_path:
             center = self.get_cell_middle(x,y)
-            pygame.draw.circle(self.screen, GREEN, center, CELL_SIZE//8)
+            pygame.draw.circle(self.screen, FLAG_COLOR, center, CELL_SIZE//8)
     
         self.draw_flags() # draws flags for start and end
         self.draw_agents()
-        self.draw_key()
+        if self.key != 0:
+            self.draw_key()
         # self.draw_signal() # draws signal if any
         pygame.display.flip()
 
@@ -331,10 +347,11 @@ class Maze:
         elif agent.direction == 3:
             eye_center1 = (x - CELL_SIZE//5, y + CELL_SIZE//5)
             eye_center2 = (x - CELL_SIZE//5, y - CELL_SIZE//5)
-        
+        if agent.has_key:
+            pygame.draw.circle(self.screen, KEY_COLOR, (x,y), CELL_SIZE/2.3)
         pygame.draw.circle(self.screen, agent.color, (x,y), AGENT_RADIUS)
-        pygame.draw.circle(self.screen, BLACK, eye_center1, AGENT_EYE_RADIUS)
-        pygame.draw.circle(self.screen, BLACK, eye_center2, AGENT_EYE_RADIUS)
+        pygame.draw.circle(self.screen, WALL_COLOR, eye_center1, AGENT_EYE_RADIUS)
+        pygame.draw.circle(self.screen, WALL_COLOR, eye_center2, AGENT_EYE_RADIUS)
         
     def draw_signal(self):
         for agent in self.agents:
@@ -365,15 +382,15 @@ class Maze:
                 (rect_x+rect_width, rect_y + rect_height//2),
                 (rect_x  + rect_height//2, (rect_y + rect_y+rect_height//2)//2)
             ]
-            pygame.draw.rect(self.screen, BLACK, (rect_x, rect_y, rect_width, rect_height))
-            pygame.draw.polygon(self.screen, GREEN, triangle_points)
+            pygame.draw.rect(self.screen, WALL_COLOR, (rect_x, rect_y, rect_width, rect_height))
+            pygame.draw.polygon(self.screen, FLAG_COLOR, triangle_points)
 
     def draw_key(self):
         key_x, key_y = self.get_cell_middle(self.key[0], self.key[1])
         key_y -= CELL_SIZE/4
-        key_color = pygame.Color('darkgoldenrod1')
+        key_color = KEY_COLOR
         pygame.draw.circle(self.screen, key_color, (key_x, key_y), CELL_SIZE/6)
-        pygame.draw.circle(self.screen, WHITE, (key_x, key_y), CELL_SIZE/11)
+        pygame.draw.circle(self.screen, PATH_COLOR, (key_x, key_y), CELL_SIZE/11)
         pygame.draw.rect(self.screen, key_color, (self.key[0]*CELL_SIZE+CELL_SIZE/2.2, self.key[1]*CELL_SIZE+CELL_SIZE/3, CELL_SIZE/10, CELL_SIZE/2))
         pygame.draw.rect(self.screen, key_color, (self.key[0]*CELL_SIZE+CELL_SIZE/2.2, self.key[1]*CELL_SIZE+CELL_SIZE*2/3, CELL_SIZE/4.5, CELL_SIZE/10))
         pygame.draw.rect(self.screen, key_color, (self.key[0]*CELL_SIZE+CELL_SIZE/2.2, self.key[1]*CELL_SIZE+CELL_SIZE/2, CELL_SIZE/4.5, CELL_SIZE/10))

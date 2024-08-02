@@ -2,7 +2,6 @@ from networks import Actor,Critic
 import maze
 import torch
 import numpy as np
-import multiprocessing
 import os
 
 torch.manual_seed(3234)
@@ -14,7 +13,7 @@ class PPO():
                   updates_per_batch=5, clip=0.2, max_grad=0.5):
         
         self.maze = None
-        self.actor = Actor([150,150,150,264])
+        self.actor = Actor([200,220,240])
         self.critic  = Critic(agent_amount, hidden_sizes=[64,64])
         self.actor_optim = torch.optim.Adam(self.actor.parameters(),lr=lr)
         self.critic_optim = torch.optim.Adam(self.critic.parameters(),lr = lr)
@@ -30,7 +29,11 @@ class PPO():
         self.max_grad = max_grad
 
         self.load_parameters()
-
+        for param_group in self.actor_optim.param_groups:
+            param_group['lr'] = lr
+        for param_group in self.critic_optim.param_groups:
+            param_group['lr'] = lr
+            
     def train(self):
         for epoch in range(self.epochs):
             b_obs, b_actions, b_log_probs, b_shortest_paths, episode_lens, b_masks, b_advs, b_vals = self.get_batch()
@@ -129,13 +132,13 @@ class PPO():
 
             total_timesteps += 1
             if done:
-                print(f"maze len: {self.maze.shortest_path_len}, exitted in: {len(episode_rew)}", flush=True)
+                # print(f"maze len: {self.maze.shortest_path_len}, exitted in: {len(episode_rew)}", flush=True)
                 batch_shortest_paths.append(self.maze.shortest_path_len)
                 obs, action_mask = self.maze.reset()
                 episode_lens.append(len(episode_rew))
                 batch_vals.extend(episode_vals)
                 batch_advantages.extend(self.get_GAEs(episode_rew, episode_vals, episode_dones))
-                # self.get_rtgs([episode_rew])
+                self.get_rtgs([episode_rew])
                 
                 episode_rew = []
                 episode_vals = []
@@ -144,7 +147,7 @@ class PPO():
                 if total_timesteps > self.batch_size:
                     break
         print()
-        batch_obs = torch.as_tensor(batch_obs, dtype=torch.float16)
+        batch_obs = torch.as_tensor(batch_obs, dtype=torch.float32)
         batch_act = torch.as_tensor(batch_act, dtype=torch.float32)
         batch_log_probs = torch.as_tensor(batch_log_probs, dtype= torch.float32)
         batch_masks = torch.as_tensor(batch_masks, dtype=torch.bool)
@@ -173,7 +176,6 @@ class PPO():
         
         # calculating log prob
         log_probs = move_probs + torch.log(mark_prob) #+ torch.log(signal_prob)
-        # print(f"{move_probs} + {torch.log(mark_prob)} = {log_probs}")
         return log_probs
 
     def get_action(self, obs, action_mask): 
@@ -226,7 +228,7 @@ class PPO():
                 # original methods use insert(0, discounted_rew) which is 0(n)
                 rtgs.append(discounted_rew)  
         rtgs.reverse()
-        print(f'ep len: {len(rtgs)} total discounted reward" {rtgs[0]}')
+        print(f'maze size: {self.maze.height} total discounted reward" {rtgs[0]}')
         return torch.as_tensor(rtgs, dtype=torch.float32)
     
     def save_parameters(self):

@@ -5,11 +5,10 @@ import numpy as np
 
 torch.manual_seed(3)
 # represents the dimensions of the feature vectors, used for dynamic network creation
-FEATURE_DIMS = [4,4,4,4,4,4,4,4,4,2,1,4,2]
-
+FEATURE_DIMS = [4,4,4,4,4,4,4,4,4,4,2,1,4,1,1,1,1,2]
 FEATURE_AMOUNT = len(FEATURE_DIMS)
 OBS_SPACE = np.sum(FEATURE_DIMS)
-EMBEDDING_DIM = 15
+EMBEDDING_DIM = 10
 
 class Actor(nn.Module):
     # note: layer size does not include first layer since it is static
@@ -55,7 +54,7 @@ class Actor(nn.Module):
 # transforms individual features into embeddings of equal size, then passed into attention layer
 class Projection(nn.Module):
 
-    def __init__(self,activation=nn.Tanh):
+    def __init__(self,activation=nn.ReLU):
         super(Projection, self).__init__()
         self.activation = activation
         self.layers = nn.ModuleList()

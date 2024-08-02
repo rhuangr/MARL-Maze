@@ -10,9 +10,10 @@ BINARY_DIRECTIONS = [[0,0], [0,1], [1,0], [1,1]] # binary representation of poss
 DELTAS = [(0, -1), (1, 0), (0, 1), (-1, 0)] # change in x,y after moving in respective cardinal direction
 
 
-FEATURE_NAMES = ['Direction', 'Dead Ends', 'Own Mark Visible', 'Others Mark Visible', 'Agent Visible',
-                 'Move t-4', 'Move t-3', 'Move t-2', 'Move t-1', 'Relative Position', 'Sees End', 'End Direction', 'ID']
-FEATURE_DIMS = [4,4,4,4,4,4,4,4,4,2,1,4,2]
+FEATURE_NAMES = ['Direction', 'Dead Ends', 'Own Mark Visible', 'Others Mark Visible', 'Agent Visible','Visible Key',
+                 'Move t-4', 'Move t-3', 'Move t-2', 'Move t-1', 'Relative Position', 'Sees End', 'End Direction',
+                 'Visible Agent Knows End','Has Key', 'Visible Agent Has key','Timestep', 'ID']
+FEATURE_DIMS = [4,4,4,4,4,4,4,4,4,4,2,1,4,1,1,1,1,2]
 
 class Agent:
     def __init__(self, name, brain, color, mark_color, tag):
@@ -26,13 +27,15 @@ class Agent:
         self.y = 0
         self.direction = 2 # direction facing value at index of ['north', 'east, 'south', 'west']
         self.tag = tag
-        
-        self.signal_time = 0 # determines the radius of signal shape drawn on screen
-        self.is_signalling = False
-        self.signal_origin = None
-
         self.knows_end = False
         self.sees_end = False
+        self.has_key = False
+        self.sees_key = False
+        
+        # signal fields
+        # self.signal_time = 0 # determines the radius of signal shape drawn on screen
+        # self.is_signalling = False
+        # self.signal_origin = None
 
         self.current_t = 0
         self.memory = deque([-1,-1,-1,-1], maxlen=4)
@@ -58,6 +61,8 @@ class Agent:
         self.knows_end = False
         self.sees_end = False
         self.end_direction = None
+        self.has_key = False
+        self.sees_key = False
         
     def get_action(self, obs, mask):
         action, prob= self.brain.get_action(obs, mask)
@@ -73,12 +78,12 @@ class Agent:
         # start building the observation vector
         direction = [0,0,0,0]
         direction[self.direction] = 1
-        visible_own_mark, visible_others_mark, visible_agents, visible_end = self.get_visibility_features()
+        visible_own_mark, visible_others_mark, visible_agents, visible_key, other_has_key, other_knows_end = self.get_visibility_features()
         dead_ends, move_action_mask = self.get_dead_ends()
         memory = self.get_memory()
 
         features = [direction, dead_ends, visible_own_mark, visible_others_mark,
-                    visible_agents, memory]
+                    visible_agents, visible_key, memory]
         observations = []
         for feature in features:
             observations.extend(feature)
@@ -104,6 +109,10 @@ class Agent:
         end_direction = [0,0,0,0] if self.knows_end == False else self.get_direction(self.maze.end)
         self.end_direction = end_direction
         observations.extend(end_direction)
+        observations.append(other_knows_end)
+        observations.append(self.has_key)
+        observations.append(other_has_key)
+        observations.append(self.current_t/self.maze.max_timestep)
         id = [0,0]
         id[2-self.tag] = 1
         observations.extend(id)
@@ -114,7 +123,7 @@ class Agent:
         action_mask.append(mark_action_mask)
         # action_mask.append(signal_action_mask)
             
-        return np.array(observations, dtype=np.float16), action_mask
+        return observations, action_mask
     
     # returns a list representing visible dead ends in all four directions
     def get_dead_ends(self):
@@ -156,18 +165,33 @@ class Agent:
                 # if the direction in which the search is expanding in encounters a wall, then no need to keep expanding
                 elif neighbors[direction] == False:
                     break 
-                
-        move_action_mask = [dead_end==0 for dead_end in dead_ends] if self.sees_end == False else move_action_mask
+        if self.sees_end != True and self.sees_key != True:
+             move_action_mask = [dead_end==0 for dead_end in dead_ends]
         # print(f'name: {self.name} mask: {move_action_mask}, sees end{self.sees_end}')
         return dead_ends, move_action_mask
         
     def get_visibility_features(self):
         visible_own_mark = [0,0,0,0]
         visible_others_mark = [0,0,0,0]
+        visible_agents = []
         visible_end = [0,0,0,0]
+        visible_key = [0,0,0,0]
+        visible_agent_has_key = 0.5
+        visible_agent_knows_end = 0.5
+        for agent in self.maze.agents:
+            if agent == self:
+                continue
+            if (agent.x,agent.y) == (self.x,self.y):
+                visible_agents.extend([1,1,1,1])
+                visible_agent_has_key = agent.has_key
+                visible_agent_knows_end = agent.knows_end
+            
+                
         visible_agents = [1 for _ in range(4*(len(self.maze.agent_positions[(self.x, self.y)])-1))] 
-        distance = 1/AGENT_VISION_RANGE
+        distance = 1#/AGENT_VISION_RANGE
+        
         self.sees_end = False
+        self.sees_key = False
         for dir in range(len(DELTAS)):
             next_x, next_y = self.x, self.y
             x_dif, y_dif = DELTAS[(dir+self.direction)%4][0], DELTAS[(dir+self.direction)%4][1]
@@ -185,7 +209,11 @@ class Agent:
                 if (next_x, next_y) == self.maze.end:
                     self.knows_end = True
                     self.sees_end = True
-                    visible_end[dir] = j*distance
+                    visible_end[dir] = 1
+                    
+                if (next_x, next_y) == self.maze.key:
+                    self.sees_key = True
+                    visible_key[dir] = 1
 
                 # visible agents feature
                 agents_in_position = self.maze.agent_positions.get((next_x, next_y))
@@ -193,18 +221,19 @@ class Agent:
                     for agent in agents_in_position:
                         if agent == self:
                             continue
+                        visible_agent_has_key = agent.has_key
                         agent_direction = [0,0,0,0]
-                        agent_direction[dir] = j*distance
+                        agent_direction[dir] = 1
                         visible_agents.extend(agent_direction)
 
                 if self.maze.layout[next_y][next_x] == self.tag:
-                    visible_own_mark[dir] = j*distance
+                    visible_own_mark[dir] = 1
                 
                 elif self.maze.layout[next_y][next_x] > 1:
-                    visible_others_mark[dir] = j*distance
+                    visible_others_mark[dir] = 1
                     
         visible_agents.extend([0 for _ in range((len(self.maze.agents) - 1) * 4-len(visible_agents))])
-        return visible_own_mark, visible_others_mark, visible_agents, visible_end
+        return visible_own_mark, visible_others_mark, visible_agents, visible_key, visible_agent_has_key, visible_agent_knows_end
     
     def get_memory(self):
         memory_feature = [0 for _ in range(16)]   
