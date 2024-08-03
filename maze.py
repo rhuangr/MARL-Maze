@@ -152,9 +152,11 @@ class Maze:
             if (new_x, new_y) == self.key:
                 self.key = 0
                 agent.has_key = True
+                agent.team_has_key = True
                 got_key = True
             agent.memory.append(move)
             visits = agent.update_visited_cells() # returns the amount of times the agent has been on that cell, used for rew
+            
             # print(f"name: {agent.name}, pos: {agent.x}, {agent.y} visits: {visits}")
 
         return agent.x,agent.y,updated_estimates,agent.has_key, got_key, visits #to_exit

@@ -12,7 +12,7 @@ DELTAS = [(0, -1), (1, 0), (0, 1), (-1, 0)] # change in x,y after moving in resp
 
 FEATURE_NAMES = ['Direction', 'Dead Ends', 'Own Mark Visible', 'Others Mark Visible', 'Agent Visible', 'Others Direction','Visible Key',
                  'Move t-4', 'Move t-3', 'Move t-2', 'Move t-1', 'Relative Position', 'Other Agent Relative Position',
-                 'Sees End', 'End Direction','Visible Agent Knows End','Has Key', 'Visible Agent Has key','Timestep', 'ID']
+                 'Sees End', 'End Direction','Visible Agent Knows End','Has Key', 'Team Has Key','Timestep', 'ID']
 FEATURE_DIMS = [4,4,4,4,4,4,4,4,4,4,4,2,2,1,4,1,1,1,1,2]
 
 class Agent:
@@ -29,8 +29,10 @@ class Agent:
         self.tag = tag
         self.knows_end = False
         self.sees_end = False
+        self.other_knows_end = False
         self.has_key = False
         self.sees_key = False
+        self.team_has_key = False
         self.other_last_seen = None
         self.visited_cells = {}
         
@@ -63,9 +65,11 @@ class Agent:
         self.is_signalling = False
         self.signal_origin = None
         self.knows_end = False
+        self.other_knows_end = False
         self.sees_end = False
         self.end_direction = None
         self.has_key = False
+        self.team_has_key = False
         self.sees_key = False
         
     def get_action(self, obs, mask):
@@ -81,11 +85,9 @@ class Agent:
         # start building the observation vector
         direction = [0,0,0,0]
         direction[self.direction] = 1
-        (visible_own_mark, visible_others_mark, visible_agents, visible_key,
-         other_has_key, other_knows_end, other_dir, other_last_pos) = self.get_visibility_features()
+        (visible_own_mark, visible_others_mark, visible_agents, visible_key, other_dir, other_last_pos) = self.get_visibility_features()
         dead_ends, move_action_mask = self.get_dead_ends()
         memory = self.get_memory()
-
         features = [direction, dead_ends, visible_own_mark, visible_others_mark,
                     visible_agents, other_dir,visible_key, memory]
         observations = []
@@ -113,9 +115,9 @@ class Agent:
         end_direction = [0,0,0,0] if self.knows_end == False else self.get_direction_from(self.maze.end)
         self.end_direction = end_direction
         observations.extend(end_direction)
-        observations.append(other_knows_end)
+        observations.append(self.other_knows_end)
         observations.append(self.has_key)
-        observations.append(other_has_key)
+        observations.append(self.team_has_key)
         observations.append(self.current_t/self.maze.max_timestep)
         id = [0,0]
         id[2-self.tag] = 1
@@ -181,8 +183,6 @@ class Agent:
         visible_end = [0,0,0,0]
         visible_key = [0,0,0,0]
         visible_agent_direction = [0,0,0,0]
-        visible_agent_has_key = 0.5
-        visible_agent_knows_end = 0.5
         self.sees_end = False
         self.sees_key = False
         
@@ -192,8 +192,8 @@ class Agent:
             if (agent.x,agent.y) == (self.x,self.y):
                 visible_agents.extend([1,1,1,1])
                 self.other_last_seen = (agent.x, agent.y)
-                visible_agent_has_key = agent.has_key
-                visible_agent_knows_end = agent.knows_end
+                self.team_has_key = self.team_has_key or agent.has_key
+                self.other_knows_end = self.other_knows_end or agent.knows_end
                 visible_agent_direction[agent.direction] = 1
         
         for dir in range(len(DELTAS)):
@@ -223,9 +223,9 @@ class Agent:
                         if agent == self:
                             continue
                         self.other_last_seen = (agent.x, agent.y)
-                        visible_agent_has_key = agent.has_key
+                        self.other_knows_end = self.other_knows_end or agent.knows_end
+                        self.team_has_key = self.team_has_key or agent.has_key
                         visible_agent_direction[agent.direction] = 1
-                        visible_agent_knows_end = agent.knows_end
                         agent_direction = [0,0,0,0]
                         agent_direction[dir] = 1
                         visible_agents.extend(agent_direction)
@@ -243,8 +243,8 @@ class Agent:
         other_relative_y = (self.max_y_visited - self.other_last_seen[1]) / self.height_estimate
         agent_last_pos = [other_relative_x, other_relative_y]
         visible_agents.extend([0 for _ in range((len(self.maze.agents) - 1) * 4-len(visible_agents))])
-        return( visible_own_mark, visible_others_mark, visible_agents, visible_key, visible_agent_has_key,
-               visible_agent_knows_end, visible_agent_direction, agent_last_pos)
+        return( visible_own_mark, visible_others_mark, visible_agents, visible_key,
+               visible_agent_direction, agent_last_pos)
     
     def update_visited_cells(self):
         pos = (self.x,self.y)
