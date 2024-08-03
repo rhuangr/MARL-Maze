@@ -76,16 +76,18 @@ class Maze:
         self.current_t += 1
         new_positions = []
         total_updates = 0
+        total_visits = []
         agents_have_key = False
         first_exit_find = False
         first_key_find = False
         for i in range(len(self.agents)):
             agent_action = action[i]
             agent = self.agents[i]
-            new_x, new_y, updated_estimates, has_key, got_key = self.single_agent_step(agent, agent_action)
+            new_x, new_y, updated_estimates, has_key, got_key, cell_visits = self.single_agent_step(agent, agent_action)
             # all_to_exit = all_to_exit and to_exit
             new_position = (new_x, new_y)
             total_updates += updated_estimates
+            total_visits.append(cell_visits)
             agents_have_key = agents_have_key or has_key
             first_key_find = first_key_find or got_key
             new_positions.append((new_position,agent))
@@ -108,8 +110,9 @@ class Maze:
         
         # reward function and done logic
         reward = 0 + first_key_find*0.5 + first_exit_find*0.5#+ total_updates*0.001 + all_to_exit*0.004
+        for visit in total_visits:
+            reward = reward + (visit-3)*-0.0001 if visit > 3 else reward
         done = False
-        # print(f" reward: {reward}")
         if agents_have_key and len(self.agent_positions) == 1 and self.end in self.agent_positions :
             reward = 1
             done = True
@@ -145,17 +148,16 @@ class Maze:
             direction = (move + agent.direction) % 4
             x_dif, y_dif = DELTAS[direction]
             new_x, new_y = agent.x + x_dif, agent.y + y_dif
-            updated_estimates = agent.move(new_x, new_y, direction)
+            agent.move(new_x, new_y, direction)
             if (new_x, new_y) == self.key:
                 self.key = 0
                 agent.has_key = True
                 got_key = True
             agent.memory.append(move)
-            
-        #     to_exit = True if agent.knows_end and agent.end_direction != [1,1,1,1] and agent.end_direction[move] == 1 else False
-        # else:
-        #     to_exit = True if agent.knows_end and agent.end_direction == [1,1,1,1] else False
-        return agent.x,agent.y,updated_estimates,agent.has_key, got_key #to_exit
+            visits = agent.update_visited_cells() # returns the amount of times the agent has been on that cell, used for rew
+            # print(f"name: {agent.name}, pos: {agent.x}, {agent.y} visits: {visits}")
+
+        return agent.x,agent.y,updated_estimates,agent.has_key, got_key, visits #to_exit
 
     def is_valid_cell(self, x, y):
         return (0 <= x < self.width and 0 <= y < self.height)
@@ -459,9 +461,3 @@ class Maze:
                 update_env()
 
         pygame.quit()
-
-if __name__ == "__main__":
-    # Initialize Pygame
-    
-    maze = Maze(rand_start=False, rand_sizes=True, rand_range=[10,10], difficulty=False)
-    maze.display_policy()

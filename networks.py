@@ -5,7 +5,7 @@ import numpy as np
 
 torch.manual_seed(3)
 # represents the dimensions of the feature vectors, used for dynamic network creation
-FEATURE_DIMS = [4,4,4,4,4,4,4,4,4,4,2,1,4,1,1,1,1,2]
+FEATURE_DIMS = [4,4,4,4,4,4,4,4,4,4,4,2,2,1,4,1,1,1,1,2]
 FEATURE_AMOUNT = len(FEATURE_DIMS)
 OBS_SPACE = np.sum(FEATURE_DIMS)
 EMBEDDING_DIM = 10

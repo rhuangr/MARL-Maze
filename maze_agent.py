@@ -10,10 +10,10 @@ BINARY_DIRECTIONS = [[0,0], [0,1], [1,0], [1,1]] # binary representation of poss
 DELTAS = [(0, -1), (1, 0), (0, 1), (-1, 0)] # change in x,y after moving in respective cardinal direction
 
 
-FEATURE_NAMES = ['Direction', 'Dead Ends', 'Own Mark Visible', 'Others Mark Visible', 'Agent Visible','Visible Key',
-                 'Move t-4', 'Move t-3', 'Move t-2', 'Move t-1', 'Relative Position', 'Sees End', 'End Direction',
-                 'Visible Agent Knows End','Has Key', 'Visible Agent Has key','Timestep', 'ID']
-FEATURE_DIMS = [4,4,4,4,4,4,4,4,4,4,2,1,4,1,1,1,1,2]
+FEATURE_NAMES = ['Direction', 'Dead Ends', 'Own Mark Visible', 'Others Mark Visible', 'Agent Visible', 'Others Direction','Visible Key',
+                 'Move t-4', 'Move t-3', 'Move t-2', 'Move t-1', 'Relative Position', 'Other Agent Relative Position',
+                 'Sees End', 'End Direction','Visible Agent Knows End','Has Key', 'Visible Agent Has key','Timestep', 'ID']
+FEATURE_DIMS = [4,4,4,4,4,4,4,4,4,4,4,2,2,1,4,1,1,1,1,2]
 
 class Agent:
     def __init__(self, name, brain, color, mark_color, tag):
@@ -31,6 +31,8 @@ class Agent:
         self.sees_end = False
         self.has_key = False
         self.sees_key = False
+        self.other_last_seen = None
+        self.visited_cells = {}
         
         # signal fields
         # self.signal_time = 0 # determines the radius of signal shape drawn on screen
@@ -52,8 +54,10 @@ class Agent:
     def reset(self,x,y):
         self.current_t = 0
         self.x, self.y = x,y
+        self.other_last_seen = (x,y)
         self.reset_estimates()
         self.direction = 2
+        self.visited_cells = {}
         self.memory = deque([-1,-1,-1,-1], maxlen=4)
         self.signal_time = 0
         self.is_signalling = False
@@ -72,18 +76,18 @@ class Agent:
     def move(self, x, y, direction):
         self.x, self.y = x, y
         self.direction = direction
-        return self.estimate_maze(direction)
-    
+        
     def get_observations(self):
         # start building the observation vector
         direction = [0,0,0,0]
         direction[self.direction] = 1
-        visible_own_mark, visible_others_mark, visible_agents, visible_key, other_has_key, other_knows_end = self.get_visibility_features()
+        (visible_own_mark, visible_others_mark, visible_agents, visible_key,
+         other_has_key, other_knows_end, other_dir, other_last_pos) = self.get_visibility_features()
         dead_ends, move_action_mask = self.get_dead_ends()
         memory = self.get_memory()
 
         features = [direction, dead_ends, visible_own_mark, visible_others_mark,
-                    visible_agents, visible_key, memory]
+                    visible_agents, other_dir,visible_key, memory]
         observations = []
         for feature in features:
             observations.extend(feature)
@@ -91,8 +95,8 @@ class Agent:
             # rel x, rel y represent the agent's estimate of his current position x,y
         relative_x = (self.x - self.min_x_visited) / self.width_estimate
         relative_y = (self.max_y_visited - self.y) / self.height_estimate
-        observations.append(relative_x)
-        observations.append(relative_y)
+        observations.extend([relative_x, relative_y])
+        observations.extend(other_last_pos)
 
         # SIGNAL RELATED FEATURE
         # signal_direction = []
@@ -106,7 +110,7 @@ class Agent:
         # observations.extend(signal_direction)
 
         observations.append(self.sees_end)
-        end_direction = [0,0,0,0] if self.knows_end == False else self.get_direction(self.maze.end)
+        end_direction = [0,0,0,0] if self.knows_end == False else self.get_direction_from(self.maze.end)
         self.end_direction = end_direction
         observations.extend(end_direction)
         observations.append(other_knows_end)
@@ -176,65 +180,81 @@ class Agent:
         visible_agents = []
         visible_end = [0,0,0,0]
         visible_key = [0,0,0,0]
+        visible_agent_direction = [0,0,0,0]
         visible_agent_has_key = 0.5
         visible_agent_knows_end = 0.5
+        self.sees_end = False
+        self.sees_key = False
+        
         for agent in self.maze.agents:
             if agent == self:
                 continue
             if (agent.x,agent.y) == (self.x,self.y):
                 visible_agents.extend([1,1,1,1])
+                self.other_last_seen = (agent.x, agent.y)
                 visible_agent_has_key = agent.has_key
                 visible_agent_knows_end = agent.knows_end
-            
-                
-        visible_agents = [1 for _ in range(4*(len(self.maze.agent_positions[(self.x, self.y)])-1))] 
-        distance = 1#/AGENT_VISION_RANGE
+                visible_agent_direction[agent.direction] = 1
         
-        self.sees_end = False
-        self.sees_key = False
         for dir in range(len(DELTAS)):
             next_x, next_y = self.x, self.y
             x_dif, y_dif = DELTAS[(dir+self.direction)%4][0], DELTAS[(dir+self.direction)%4][1]
             for j in range(1,AGENT_VISION_RANGE+1):
-                
                 # increment x,y to expand vision in that direction
                 next_x += x_dif
                 next_y += y_dif
-
                 # if new x,y is out of bounds or hits a wall, break
                 if (next_x < 0 or next_x >= self.maze.width or next_y < 0 or next_y >= self.maze.height or
                      self.maze.layout[next_y][next_x] == 1):
                     break
-                
+                # check for end
                 if (next_x, next_y) == self.maze.end:
                     self.knows_end = True
                     self.sees_end = True
                     visible_end[dir] = 1
-                    
+                # check for key
                 if (next_x, next_y) == self.maze.key:
                     self.sees_key = True
                     visible_key[dir] = 1
-
-                # visible agents feature
+                # check for visible agents and its features
                 agents_in_position = self.maze.agent_positions.get((next_x, next_y))
                 if agents_in_position != None:
                     for agent in agents_in_position:
                         if agent == self:
                             continue
+                        self.other_last_seen = (agent.x, agent.y)
                         visible_agent_has_key = agent.has_key
+                        visible_agent_direction[agent.direction] = 1
+                        visible_agent_knows_end = agent.knows_end
                         agent_direction = [0,0,0,0]
                         agent_direction[dir] = 1
                         visible_agents.extend(agent_direction)
-
+                # check for own marks
                 if self.maze.layout[next_y][next_x] == self.tag:
                     visible_own_mark[dir] = 1
-                
+                # check for other agent's marks
                 elif self.maze.layout[next_y][next_x] > 1:
                     visible_others_mark[dir] = 1
-                    
+                # update min max visited
+                self.update_maze_minmax((dir+self.direction)%4, next_x, next_y)
+        
+        self.update_maze_dims()
+        other_relative_x = (self.other_last_seen[0] - self.min_x_visited) / self.width_estimate
+        other_relative_y = (self.max_y_visited - self.other_last_seen[1]) / self.height_estimate
+        agent_last_pos = [other_relative_x, other_relative_y]
         visible_agents.extend([0 for _ in range((len(self.maze.agents) - 1) * 4-len(visible_agents))])
-        return visible_own_mark, visible_others_mark, visible_agents, visible_key, visible_agent_has_key, visible_agent_knows_end
+        return( visible_own_mark, visible_others_mark, visible_agents, visible_key, visible_agent_has_key,
+               visible_agent_knows_end, visible_agent_direction, agent_last_pos)
     
+    def update_visited_cells(self):
+        pos = (self.x,self.y)
+        if pos in self.visited_cells:
+            self.visited_cells[pos] += 1 
+            return self.visited_cells[pos]
+        else:
+            self.visited_cells[pos] = 1
+            return 1
+        
     def get_memory(self):
         memory_feature = [0 for _ in range(16)]   
         for i, move in enumerate(self.memory):
@@ -243,7 +263,7 @@ class Agent:
         return memory_feature
     
     # gets the direction from the given point
-    def get_direction(self, origin):
+    def get_direction_from(self, origin):
         if origin == (self.x, self.y):
             return [1,1,1,1]
         
@@ -258,30 +278,33 @@ class Agent:
             direction[(3-self.direction)%4] = 1
 
         return direction
-    def estimate_maze(self, direction):
+    
+    def update_maze_minmax(self, direction, new_x, new_y):
 
         updated = False
-        if direction == 0 and self.y < self.min_y_visited :
-            self.min_y_visited = self.y
+        if direction == 0 and new_y < self.min_y_visited :
+            self.min_y_visited = new_y
             updated = True
-        elif direction == 1 and self.x > self.max_x_visited:
-            self.max_x_visited = self.x
+        elif direction == 1 and new_x > self.max_x_visited:
+            self.max_x_visited = new_x
             updated = True
-        elif direction == 2 and self.y > self.max_y_visited:
-            self.max_y_visited = self.y
+        elif direction == 2 and new_y > self.max_y_visited:
+            self.max_y_visited = new_y
             updated = True
-        elif direction == 3 and self.x < self.min_x_visited:
-            self.min_x_visited = self.x
+        elif direction == 3 and new_x < self.min_x_visited:
+            self.min_x_visited = new_x
             updated = True
-
-        # ommited + 1 from the estimate calculations to avoid redundance in relative position calculations
+        # print(f"name: {self.name}, minx: {self.min_x_visited}, maxx: {self.max_x_visited}, miny: {self.min_y_visited}, maxy: {self.max_y_visited}")
+        return updated
+    
+    def update_maze_dims(self):
+                # ommited + 1 from the estimate calculations to avoid redundance in relative position calculations
         new_width_estimate = self.max_x_visited - self.min_x_visited 
         new_height_estimate = self.max_y_visited - self.min_y_visited
         self.width_estimate = new_width_estimate if new_width_estimate != 0 else 1
         self.height_estimate = new_height_estimate if new_height_estimate != 0 else 1
         # print(f"AGENT: {self.name} WIDTH,HEIGHT ESTIM: {self.width_estimate}, {self.height_estimate}")
-        return updated
-    
+        
     def reset_estimates(self):
         self.min_x_visited = self.x
         self.max_x_visited = self.x

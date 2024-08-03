@@ -111,6 +111,7 @@ class PPO():
         obs, action_mask = self.maze.reset()
         total_timesteps = 0
 
+        testrtgs= []
         while True:
             batch_obs.append(obs)
             batch_masks.append(action_mask)
@@ -138,7 +139,7 @@ class PPO():
                 episode_lens.append(len(episode_rew))
                 batch_vals.extend(episode_vals)
                 batch_advantages.extend(self.get_GAEs(episode_rew, episode_vals, episode_dones))
-                self.get_rtgs([episode_rew])
+                testrtgs.append(self.get_rtgs([episode_rew])[0])
                 
                 episode_rew = []
                 episode_vals = []
@@ -147,6 +148,7 @@ class PPO():
                 if total_timesteps > self.batch_size:
                     break
         print()
+        print(np.mean(testrtgs))
         batch_obs = torch.as_tensor(batch_obs, dtype=torch.float32)
         batch_act = torch.as_tensor(batch_act, dtype=torch.float32)
         batch_log_probs = torch.as_tensor(batch_log_probs, dtype= torch.float32)
@@ -229,7 +231,7 @@ class PPO():
                 rtgs.append(discounted_rew)  
         rtgs.reverse()
         print(f'maze size: {self.maze.height} total discounted reward" {rtgs[0]}')
-        return torch.as_tensor(rtgs, dtype=torch.float32)
+        return rtgs
     
     def save_parameters(self):
         torch.save({
@@ -249,13 +251,4 @@ class PPO():
             print("successfuly loaded existing parameters")
             return True
         return False
-
-if __name__ == "__main__":
-    maze = maze.Maze()
-    brain = PPO(maze=maze)
-    obs, mask = maze.reset()
-    action, logprob, _ = brain.get_action(obs, torch.as_tensor(mask, dtype=torch.bool))
-    logporbbb = brain.get_log_probs(obs, torch.as_tensor(action, dtype=torch.float32), torch.as_tensor(mask, dtype=torch.bool))
-            
-
 
