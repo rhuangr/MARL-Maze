@@ -5,7 +5,7 @@ import numpy as np
 
 torch.manual_seed(3)
 # represents the dimensions of the feature vectors, used for dynamic network creation
-FEATURE_DIMS = [4,4,4,4,4,4,4,4,4,4,4,2,2,1,4,1,1,1,1,2]
+FEATURE_DIMS = [4,4,4,4,4,4,4,4,4,4,4,4,2,2,1,4,1,1,1,1,1,2]
 FEATURE_AMOUNT = len(FEATURE_DIMS)
 OBS_SPACE = np.sum(FEATURE_DIMS)
 EMBEDDING_DIM = 10
@@ -24,7 +24,7 @@ class Actor(nn.Module):
         for i in range(len(hidden_sizes)-1):
             self.layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i+1]))
             
-        self.move_head = nn.Linear(hidden_sizes[-1],4)
+        self.move_head = nn.Linear(hidden_sizes[-1],5)
         self.mark_head = nn.Linear(hidden_sizes[-1],1)
         # self.signal_head = nn.Linear(hidden_sizes[-1], 1)
         self.initialize_weights()
@@ -47,8 +47,8 @@ class Actor(nn.Module):
         for layer in self.layers:
             nn.init.orthogonal_(layer.weight)
         with torch.no_grad():  
-            self.move_head.weight *= 0.1
-            self.mark_head.weight *= 0.1
+            self.move_head.weight *= 0.01
+            self.mark_head.weight *= 0.01
             # self.signal_head.weight *= 0.1
 
 # transforms individual features into embeddings of equal size, then passed into attention layer

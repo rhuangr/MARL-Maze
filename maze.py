@@ -83,13 +83,13 @@ class Maze:
         for i in range(len(self.agents)):
             agent_action = action[i]
             agent = self.agents[i]
-            new_x, new_y, updated_estimates, has_key, got_key, cell_visits = self.single_agent_step(agent, agent_action)
+            new_x, new_y, updated_estimates, has_key, got_key= self.single_agent_step(agent, agent_action)
             # all_to_exit = all_to_exit and to_exit
             new_position = (new_x, new_y)
             total_updates += updated_estimates
-            total_visits.append(cell_visits)
-            agents_have_key = agents_have_key or has_key
-            first_key_find = first_key_find or got_key
+            # total_visits.append(cell_visits)
+            agents_have_key += has_key
+            first_key_find += got_key
             new_positions.append((new_position,agent))
 
         self.agent_positions = {}
@@ -109,16 +109,15 @@ class Maze:
                 self.exit_found = True
         
         # reward function and done logic
-        reward = 0 + first_key_find*0.5 + first_exit_find*0.5#+ total_updates*0.001 + all_to_exit*0.004
-        for visit in total_visits:
-            reward = reward + (visit-3)*-0.0001 if visit > 3 else reward
+        reward = 0 + first_key_find*0.75 + first_exit_find*0.75#+ total_updates*0.001 + all_to_exit*0.004
+        # for visit in total_visits:
+        #     reward = reward + (visit-3)*-0.0001 if visit > 3 else reward
         done = False
         if agents_have_key and len(self.agent_positions) == 1 and self.end in self.agent_positions :
-            reward = 1
+            reward += 1
             done = True
         elif self.current_t >= self.max_timestep:
-            done = True 
-        
+            done = True
         return obs, action_masks, reward, done
     
     def single_agent_step(self, agent, action):
@@ -127,21 +126,22 @@ class Maze:
         updated_estimates = False
         got_key = False
         move,mark = action[0], action[1]
+        punish = 0
         # print(f"{agent.name}: Move: {move}")
         # marking
         if mark == 1:
             self.layout[agent.y][agent.x] = agent.tag
+            agent.last_mark_pos = (agent.x, agent.y)
         
         # signalling
         # if signal == 1:
         #     agent.signal_origin = (agent.x, agent.y)
         #     agent.is_signalling = True 
-        
-        if agent.signal_time <= SIGNAL_DURATION and agent.is_signalling == True:
-            agent.signal_time += 1
-        else:
-            agent.signal_time = 0
-            agent.is_signalling = False
+        # if agent.signal_time <= SIGNAL_DURATION and agent.is_signalling == True:
+        #     agent.signal_time += 1
+        # else:
+        #     agent.signal_time = 0
+        #     agent.is_signalling = False
             
         # moving
         if move != 4: # if move action chosen is not to stand still
@@ -155,11 +155,9 @@ class Maze:
                 agent.team_has_key = True
                 got_key = True
             agent.memory.append(move)
-            visits = agent.update_visited_cells() # returns the amount of times the agent has been on that cell, used for rew
-            
+            # visits = agent.update_visited_cells() # returns the amount of times the agent has been on that cell, used for rew
             # print(f"name: {agent.name}, pos: {agent.x}, {agent.y} visits: {visits}")
-
-        return agent.x,agent.y,updated_estimates,agent.has_key, got_key, visits #to_exit
+        return agent.x,agent.y,updated_estimates,agent.has_key, got_key
 
     def is_valid_cell(self, x, y):
         return (0 <= x < self.width and 0 <= y < self.height)
@@ -175,13 +173,14 @@ class Maze:
         
         # building logic starts here
         stack = [self.start]
+        corridor_const = 0
         while stack:
             current_cell = stack[-1]
             self.layout[current_cell[1]][current_cell[0]] = 0
             neighbors = self.get_neighbors(current_cell)
 
             # if there are valid neighbors, we expand the maze in the direction of the randomly chosen neighbor
-            if neighbors:
+            if neighbors and random.random() > corridor_const:
                 next_cell = random.choice(neighbors)
                 
                 # removes the wall between current cell and next cell
@@ -189,10 +188,12 @@ class Maze:
                 x2, y2 = next_cell
                 self.layout[(y1 + y2) // 2][(x1 + x2) // 2] = 0
                 stack.append(next_cell)
+                corridor_const += 1/(10*(max(self.width, self.height)))
 
             # no valid neighbors, therefore we backtrack until a cell with valid neighbors to continue expanding
             else:
                 stack.pop()
+                corridor_const = 0
 
         # choose end n amount of times equals to difficulty constant and choose the longest path
         max_length = 0
@@ -260,12 +261,10 @@ class Maze:
         #         break
         
     def set_key(self):
-        min_path = max(self.height, self.width) #min(self.height, self.width) * (max(self.height, self.width)/)
+        # min_path = max(self.height, self.width) #min(self.height, self.width) * (max(self.height, self.width)/)
         while True:
             x,y = random.randint(0,self.width-1), random.randint(0,self.height-1)
-            if (self.layout[y][x] == 1 or (x,y) == self.end or (x,y) == self.start or 
-                len(self.get_shortest_path(self.end, (x,y))) < min_path or 
-                len(self.get_shortest_path(self.start, (x,y))) < min_path):
+            if (self.layout[y][x] == 1 or (x,y) == self.end or (x,y) == self.start or (x,y) in self.shortest_path):
                 continue
             self.key = (x,y)
             self.layout[y][x] = 5
