@@ -9,11 +9,11 @@ torch.manual_seed(3234)
 MODEL_PATH = 'PPO.pth'
 
 class PPO():
-    def __init__(self, agent_amount, epochs=200, batch_size=17500, lr = 0.0001, discount_rate=0.995, lam=0.9,
+    def __init__(self, agent_amount, epochs=500, batch_size=15000, lr = 0.0002, discount_rate=0.99, lam=0.95,
                   updates_per_batch=5, clip=0.2, max_grad=0.5):
         
         self.maze = None
-        self.actor = Actor([220,230,240])
+        self.actor = Actor([230,230,230,230])
         self.critic  = Critic(agent_amount, hidden_sizes=[64,64])
         self.actor_optim = torch.optim.Adam(self.actor.parameters(),lr=lr)
         self.critic_optim = torch.optim.Adam(self.critic.parameters(),lr = lr)
@@ -133,13 +133,13 @@ class PPO():
 
             total_timesteps += 1
             if done:
-                print(f"maze len: {self.maze.shortest_path_len}, exitted in: {len(episode_rew)}", flush=True)
+                # print(f"maze len: {self.maze.shortest_path_len}, exitted in: {len(episode_rew)}", flush=True)
                 batch_shortest_paths.append(self.maze.shortest_path_len)
                 obs, action_mask = self.maze.reset()
                 episode_lens.append(len(episode_rew))
                 batch_vals.extend(episode_vals)
                 batch_advantages.extend(self.get_GAEs(episode_rew, episode_vals, episode_dones))
-                # testrtgs.append(self.get_rtgs([episode_rew])[0])
+                testrtgs.append(self.get_rtgs([episode_rew])[0])
                 
                 episode_rew = []
                 episode_vals = []
@@ -148,7 +148,7 @@ class PPO():
                 if total_timesteps > self.batch_size:
                     break
         print()
-        # print(np.mean(testrtgs))
+        print(np.mean(testrtgs))
         batch_obs = torch.as_tensor(batch_obs, dtype=torch.float32)
         batch_act = torch.as_tensor(batch_act, dtype=torch.float32)
         batch_log_probs = torch.as_tensor(batch_log_probs, dtype= torch.float32)
@@ -226,7 +226,7 @@ class PPO():
             discounted_rew = 0
             # print(f"hi: {len(episode_rew)}", end= " ")
             for rew in reversed(episode_rew):
-                discounted_rew = rew + self.discount_rate * discounted_rew
+                discounted_rew = rew + 0.995 * discounted_rew
                 # original methods use insert(0, discounted_rew) which is 0(n)
                 rtgs.append(discounted_rew)  
         rtgs.reverse()
@@ -235,9 +235,9 @@ class PPO():
     
     def decay_lr(self):
         for param_group in self.actor_optim.param_groups:
-            param_group['lr'] *= 0.9975
+            param_group['lr'] *= 0.997
         for param_group in self.critic_optim.param_groups:
-            param_group['lr'] *= 0.9975
+            param_group['lr'] *= 0.997
             
     def save_parameters(self):
         torch.save({

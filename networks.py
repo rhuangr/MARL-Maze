@@ -5,7 +5,7 @@ import numpy as np
 
 torch.manual_seed(3)
 # represents the dimensions of the feature vectors, used for dynamic network creation
-FEATURE_DIMS = [4,4,4,4,4,4,4,4,4,4,4,4,2,2,1,4,1,1,1,1,1,2]
+FEATURE_DIMS = [4,4,4,4,4,4,4,4,4,4,4,4,2,2,1,4,1,1,1,1,1,1,2]
 FEATURE_AMOUNT = len(FEATURE_DIMS)
 OBS_SPACE = np.sum(FEATURE_DIMS)
 EMBEDDING_DIM = 10
@@ -54,24 +54,18 @@ class Actor(nn.Module):
 # transforms individual features into embeddings of equal size, then passed into attention layer
 class Projection(nn.Module):
 
-    def __init__(self,activation=nn.ReLU):
+    def __init__(self):
         super(Projection, self).__init__()
-        self.activation = activation
         self.layers = nn.ModuleList()
         for dim in FEATURE_DIMS:
-            variable_size = EMBEDDING_DIM - dim if dim != 1 else EMBEDDING_DIM
-            self.layers.append(nn.Linear(dim, variable_size))
-            self.layers.append(nn.Linear(variable_size,EMBEDDING_DIM))
-            self.layers.append(nn.Linear(EMBEDDING_DIM, EMBEDDING_DIM))
+            self.layers.append(nn.Linear(dim, EMBEDDING_DIM))
 
     def forward(self, input):
         index = 0
         observations = []
         for i in range(len(FEATURE_DIMS)):
             input_slice = input[:, index:index+FEATURE_DIMS[i]]
-            embedding = self.layers[i*3](input_slice)
-            embedding = self.layers[i*3+1](embedding)
-            embedding = self.activation()(self.layers[i*3+2](embedding))
+            embedding = self.layers[i](input_slice)
             observations.append(embedding)
         # print(torch.cat(observations,dim=1).reshape(-1, FEATURE_AMOUNT, EMBEDDING_DIM).shape)
         return torch.cat(observations,dim=1).reshape(-1, FEATURE_AMOUNT, EMBEDDING_DIM)

@@ -12,8 +12,8 @@ DELTAS = [(0, -1), (1, 0), (0, 1), (-1, 0)] # change in x,y after moving in resp
 
 FEATURE_NAMES = ['Direction', 'Dead Ends', 'Own Mark Visible', 'Others Mark Visible', 'Agent Visible', 'Others Direction','Visible Key',
                  'Move t-4', 'Move t-3', 'Move t-2', 'Move t-1','Last Mark Pos', 'Relative Position', 'Other Agent Relative Position',
-                 'Sees End', 'End Direction','Visible Agent Knows End','Has Key', 'Team Has Key','Time Last Agent Seen','Timestep', 'ID']
-FEATURE_DIMS = [4,4,4,4,4,4,4,4,4,4,4,4,2,2,1,4,1,1,1,1,1,2]
+                 'Sees End', 'End Direction', 'Exit Path Length','Visible Agent Knows End','Has Key', 'Team Has Key', 'Time Last Agent Seen','Timestep', 'ID']
+FEATURE_DIMS = [4,4,4,4,4,4,4,4,4,4,4,4,2,2,1,4,1,1,1,1,1,1,2]
 
 class Agent:
     def __init__(self, name, brain, color, mark_color, tag):
@@ -31,8 +31,11 @@ class Agent:
         self.knows_end = False
         self.sees_end = False
         self.other_knows_end = False
+        self.exit_path_len = -1 
+        self.exit_path = None
         self.has_key = False
         self.sees_key = False
+        self.got_key = False # just obtained key
         self.team_has_key = False
         self.other_last_seen = None
         self.time_from_last_seen = 0
@@ -71,6 +74,8 @@ class Agent:
         self.other_knows_end = False
         self.sees_end = False
         self.end_direction = None
+        self.exit_path_len = -1 
+        self.exit_path = None
         self.has_key = False
         self.team_has_key = False
         self.sees_key = False
@@ -121,10 +126,13 @@ class Agent:
         end_direction = [0,0,0,0] if self.knows_end == False else self.get_direction_from(self.maze.end)
         self.end_direction = end_direction
         observations.extend(end_direction)
+        exit_len = self.exit_path_len/40 if self.exit_path_len < 40 else 1
+        observations.append(exit_len)
         observations.append(self.other_knows_end)
         observations.append(self.has_key)
         observations.append(self.team_has_key)
-        other_last_seen = 2*self.time_from_last_seen/(self.maze.height*self.maze.width) if self.time_from_last_seen < self.maze.height*self.maze.width/2 else 1
+        # observations.append(self.got_key)
+        other_last_seen = self.time_from_last_seen/40 if self.time_from_last_seen<40 else 1
         observations.append(other_last_seen)
         observations.append(self.current_t/self.maze.max_timestep)
         id = [0,0]
@@ -187,13 +195,13 @@ class Agent:
         return dead_ends, move_action_mask
         
     def get_visibility_features(self):
-        self.time_from_last_seen += 1
         visible_own_mark = [0,0,0,0]
         visible_others_mark = [0,0,0,0]
         visible_agents = []
         visible_end = [0,0,0,0]
         visible_key = [0,0,0,0]
         visible_agent_direction = [0,0,0,0]
+        self.time_from_last_seen += 1
         self.sees_end = False
         self.sees_key = False
         
@@ -224,6 +232,9 @@ class Agent:
                     self.knows_end = True
                     self.sees_end = True
                     visible_end[dir] = 1
+                    if self.exit_path_len == -1:
+                        self.exit_path = self.maze.get_shortest_path(self.maze.end ,(self.x,self.y))
+                        self.exit_path_len = len(self.exit_path) - 1
                 # check for key
                 if (next_x, next_y) == self.maze.key:
                     self.sees_key = True

@@ -123,8 +123,8 @@ class Maze:
     def single_agent_step(self, agent, action):
         
         agent.current_t = self.current_t
+        agent.got_key = False
         updated_estimates = False
-        got_key = False
         move,mark = action[0], action[1]
         punish = 0
         # print(f"{agent.name}: Move: {move}")
@@ -153,11 +153,19 @@ class Maze:
                 self.key = 0
                 agent.has_key = True
                 agent.team_has_key = True
-                got_key = True
-            agent.memory.append(move)
-            # visits = agent.update_visited_cells() # returns the amount of times the agent has been on that cell, used for rew
-            # print(f"name: {agent.name}, pos: {agent.x}, {agent.y} visits: {visits}")
-        return agent.x,agent.y,updated_estimates,agent.has_key, got_key
+                agent.got_key = True
+            if move != 0:
+                agent.memory.append(move)
+                
+            if agent.knows_end:
+                if len(agent.exit_path) > 1 and (agent.x,agent.y) == agent.exit_path[-2]:
+                    agent.exit_path.pop()
+                    agent.exit_path_len -= 1
+                else:
+                    agent.exit_path.append((agent.x,agent.y))
+                    agent.exit_path_len += 1
+                    
+        return agent.x,agent.y,updated_estimates,agent.has_key, agent.got_key
 
     def is_valid_cell(self, x, y):
         return (0 <= x < self.width and 0 <= y < self.height)
@@ -270,7 +278,7 @@ class Maze:
             self.layout[y][x] = 5
             break
 
-    def get_shortest_path(self, start, end):
+    def get_shortest_path(self, start, end, actions=False):
         stack = [(start, [start])]
         visited = set([start])
 
@@ -281,7 +289,7 @@ class Maze:
 
             for x_dif, y_dif in DELTAS: 
                 next_x, next_y = x + x_dif, y + y_dif
-                if (self.is_valid_cell(next_x, next_y) and self.layout[next_y][next_x] == 0 and (next_x, next_y) not in visited):
+                if (self.is_valid_cell(next_x, next_y) and self.layout[next_y][next_x] != 1 and (next_x, next_y) not in visited):
                     visited.add((next_x, next_y))
                     stack.append(((next_x, next_y), path + [(next_x, next_y)]))
 
@@ -422,6 +430,7 @@ class Maze:
         
         def update_env():
             nonlocal obs, masks
+            # print(self.agents[1].brain.critic(obs))
             action = []
             for i in range (len(self.agents)):
                 agent_obs = obs[i]
