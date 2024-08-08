@@ -8,7 +8,7 @@ torch.manual_seed(3)
 FEATURE_DIMS = [4,4,4,4,4,4,4,4,4,4,4,4,2,2,1,4,1,1,1,1,1,1,2]
 FEATURE_AMOUNT = len(FEATURE_DIMS)
 OBS_SPACE = np.sum(FEATURE_DIMS)
-EMBEDDING_DIM = 10
+EMBEDDING_DIM = 20
 
 class Actor(nn.Module):
     # note: layer size does not include first layer since it is static

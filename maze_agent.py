@@ -3,22 +3,21 @@ import numpy as np
 from math import exp
 from collections import deque
 
-AGENT_VISION_RANGE = 4
 ACTIONS = ['forward', 'right', 'backward', 'left']
 DIRECTIONS = ['north', 'east', 'south', 'west']
-BINARY_DIRECTIONS = [[0,0], [0,1], [1,0], [1,1]] # binary representation of possible directions
 DELTAS = [(0, -1), (1, 0), (0, 1), (-1, 0)] # change in x,y after moving in respective cardinal direction
 
 
 FEATURE_NAMES = ['Direction', 'Dead Ends', 'Own Mark Visible', 'Others Mark Visible', 'Agent Visible', 'Others Direction','Visible Key',
                  'Move t-4', 'Move t-3', 'Move t-2', 'Move t-1','Last Mark Pos', 'Relative Position', 'Other Agent Relative Position',
-                 'Sees End', 'End Direction', 'Exit Path Length','Visible Agent Knows End','Has Key', 'Team Has Key', 'Time Last Agent Seen','Timestep', 'ID']
+                 'Sees End','Next Move to Exit', 'Exit Path Length','Visible Agent Knows End','Has Key', 'Team Has Key', 'Time Last Agent Seen','Timestep', 'ID']
 FEATURE_DIMS = [4,4,4,4,4,4,4,4,4,4,4,4,2,2,1,4,1,1,1,1,1,1,2]
 
 class Agent:
-    def __init__(self, name, brain, color, mark_color, tag):
+    def __init__(self, name, brain, color, mark_color, tag, vision_range=4):
         self.maze = None
         self.name = name
+        self.vision_range = vision_range
         self.brain = brain
         self.color = color
         self.mark_color = mark_color
@@ -31,8 +30,9 @@ class Agent:
         self.knows_end = False
         self.sees_end = False
         self.other_knows_end = False
-        self.exit_path_len = -1 
-        self.exit_path = None
+        self.next_move_to_exit = [0,0,0,0]
+        self.exit_len = -1 
+        self.exit_route = None
         self.has_key = False
         self.sees_key = False
         self.got_key = False # just obtained key
@@ -73,16 +73,15 @@ class Agent:
         self.knows_end = False
         self.other_knows_end = False
         self.sees_end = False
-        self.end_direction = None
-        self.exit_path_len = -1 
-        self.exit_path = None
+        self.next_move_to_exit = [0,0,0,0]
+        self.exit_len = -1 
+        self.exit_route = None
         self.has_key = False
         self.team_has_key = False
         self.sees_key = False
         
     def get_action(self, obs, mask):
         action, prob= self.brain.get_action(obs, mask)
-        # print(f'name: {self.name}')
         return action, exp(prob)
     
     def move(self, x, y, direction):
@@ -123,10 +122,12 @@ class Agent:
         # observations.extend(signal_direction)
 
         observations.append(self.sees_end)
-        end_direction = [0,0,0,0] if self.knows_end == False else self.get_direction_from(self.maze.end)
-        self.end_direction = end_direction
-        observations.extend(end_direction)
-        exit_len = self.exit_path_len/40 if self.exit_path_len < 40 else 1
+        next_move_to_exit = [0,0,0,0]
+        if self.exit_route != None and len(self.exit_route) > 0:
+            next_move_to_exit[(self.exit_route[-1] - self.direction)%4] = 1
+        self.next_move_to_exit = next_move_to_exit
+        observations.extend(next_move_to_exit)
+        exit_len = self.exit_len/40 if self.exit_len < 40 else 1
         observations.append(exit_len)
         observations.append(self.other_knows_end)
         observations.append(self.has_key)
@@ -138,15 +139,17 @@ class Agent:
         id = [0,0]
         id[2-self.tag] = 1
         observations.extend(id)
-
         # start building the action mask
+        if 1 in visible_key:
+            move_action_mask = [False,False, False, False]
+            move_action_mask[np.argmax(visible_key)] = True
         mark_action_mask = True if self.maze.layout[self.y][self.x] != self.tag else False
-        no_move_mask = True if (self.x, self.y) == self.maze.end and self.team_has_key else False
+        no_move_mask = True if ((self.x, self.y) == self.maze.end and self.team_has_key) else False
         action_mask = move_action_mask
         action_mask.append(no_move_mask)
         action_mask.append(mark_action_mask)
         # action_mask.append(signal_action_mask)
-            
+        print(self.exit_route)
         return observations, action_mask
     
     # returns a list representing visible dead ends in all four directions
@@ -155,7 +158,7 @@ class Agent:
         dead_ends = [0,0,0,0]
         neighbors = self.get_neighbors((self.x, self.y))
         move_action_mask = neighbors
-        distance = 1/AGENT_VISION_RANGE
+        distance = 1/self.vision_range
         # if there is a wall in the adjacent cell of a given direction, then that direction is a dead end
         for direction in range(len(neighbors)):
             if neighbors[direction] == False:
@@ -172,7 +175,7 @@ class Agent:
             x_dif, y_dif = DELTAS[(direction+self.direction)%4][0], DELTAS[(direction+self.direction)%4][1]
 
             # simulates vision, by checking if next cells in the current direction are dead ends
-            for j in range(1,AGENT_VISION_RANGE+1):
+            for j in range(1,self.vision_range+1):
                 next_x += x_dif
                 next_y += y_dif
                 neighbors = self.get_neighbors((next_x, next_y))
@@ -215,11 +218,11 @@ class Agent:
                 self.team_has_key = self.team_has_key or agent.has_key
                 self.other_knows_end = self.other_knows_end or agent.knows_end
                 visible_agent_direction[agent.direction] = 1
-        
+                
         for dir in range(len(DELTAS)):
             next_x, next_y = self.x, self.y
             x_dif, y_dif = DELTAS[(dir+self.direction)%4][0], DELTAS[(dir+self.direction)%4][1]
-            for j in range(1,AGENT_VISION_RANGE+1):
+            for j in range(1,self.vision_range+1):
                 # increment x,y to expand vision in that direction
                 next_x += x_dif
                 next_y += y_dif
@@ -232,9 +235,9 @@ class Agent:
                     self.knows_end = True
                     self.sees_end = True
                     visible_end[dir] = 1
-                    if self.exit_path_len == -1:
-                        self.exit_path = self.maze.get_shortest_path(self.maze.end ,(self.x,self.y))
-                        self.exit_path_len = len(self.exit_path) - 1
+                    if self.exit_len == -1:
+                        self.exit_route = [(dir+self.direction)%4 for _ in range(j)]
+                        self.exit_len = j
                 # check for key
                 if (next_x, next_y) == self.maze.key:
                     self.sees_key = True
@@ -255,10 +258,10 @@ class Agent:
                         visible_agents.extend(agent_direction)
                 # check for own marks
                 if self.maze.layout[next_y][next_x] == self.tag:
-                    visible_own_mark[dir] += 1/AGENT_VISION_RANGE
+                    visible_own_mark[dir] += 1/self.vision_range
                 # check for other agent's marks
                 elif self.maze.layout[next_y][next_x] > 1:
-                    visible_others_mark[dir] += 1/AGENT_VISION_RANGE
+                    visible_others_mark[dir] += 1/self.vision_range
                 # update min max visited
                 self.update_maze_minmax((dir+self.direction)%4, next_x, next_y)
         

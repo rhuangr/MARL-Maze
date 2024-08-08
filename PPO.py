@@ -13,7 +13,7 @@ class PPO():
                   updates_per_batch=5, clip=0.2, max_grad=0.5):
         
         self.maze = None
-        self.actor = Actor([230,230,230,230])
+        self.actor = Actor([200,200,200])
         self.critic  = Critic(agent_amount, hidden_sizes=[64,64])
         self.actor_optim = torch.optim.Adam(self.actor.parameters(),lr=lr)
         self.critic_optim = torch.optim.Adam(self.critic.parameters(),lr = lr)

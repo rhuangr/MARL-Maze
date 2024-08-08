@@ -1,22 +1,23 @@
 import pygame
 import random
 import time
-
+import numpy as np
 
 PATH_COLOR = pygame.Color("white")
 WALL_COLOR =  pygame.Color("black")
 FLAG_COLOR = pygame.Color("mediumspringgreen") 
 KEY_COLOR = pygame.Color('darkgoldenrod1')
+FOG_COLOR = pygame.Color('gray14')
 
 CELL_SIZE = 40
 AGENT_RADIUS = CELL_SIZE/3
 AGENT_EYE_RADIUS = AGENT_RADIUS/3
-SIGNAL_RADIUS = AGENT_RADIUS * 1.2
-SIGNAL_DURATION = 6
+# SIGNAL_RADIUS = AGENT_RADIUS * 1.2
+# SIGNAL_DURATION = 6
 
-TIMESTEP_LENGTH = 0.08 # USED WHEN RENDERING THE GAME
+TIMESTEP_LENGTH = 0.04 # USED WHEN RENDERING THE GAME
 DELTAS = [(0, -1), (1, 0), (0, 1), (-1, 0)] # change in x,y after moving in respective cardinal direction
-
+random.seed(5)
 class Maze:
     def __init__(self, agents, max_timestep = 3500, difficulty=1, rand_start=False,
                  rand_sizes=False, rand_range=[6,12], default_size = [8,8]):
@@ -58,27 +59,28 @@ class Maze:
         self.build_maze()
 
         self.agent_positions = {}
-        self.agent_positions[self.start] = list(self.agents)
         self.exit_found = False
 
         obs = []
         masks = []
         # resetting agent related
+        i = 0
         for agent in self.agents:
-            agent.reset(self.start[0], self.start[1])
+            posx, posy = self.shortest_path[i][0], self.shortest_path[i][1]
+            agent.reset(posx, posy)
+            self.agent_positions[(posx, posy)] = [agent]
             agent_obs, agent_mask = agent.get_observations()
             obs.append(agent_obs)
             masks.append(agent_mask)
-
+            
+            i += 1
         return obs, masks
     
     def step(self, action):
         self.current_t += 1
         new_positions = []
         total_updates = 0
-        total_visits = []
         agents_have_key = False
-        first_exit_find = False
         first_key_find = False
         for i in range(len(self.agents)):
             agent_action = action[i]
@@ -100,21 +102,25 @@ class Maze:
                 self.agent_positions[position] = [agent]
                 
         obs, action_masks = [], []
+        exit_ready = True
+        
         for agent in self.agents:
             observation, mask = agent.get_observations()
             obs.append(observation)
             action_masks.append(mask)
-            if self.exit_found == False and agent.knows_end:
-                first_exit_find = agent.knows_end
-                self.exit_found = True
-        
+            exit_ready = exit_ready and agent.team_has_key and agent.knows_end   
+        if exit_ready:   
+            for i in range(len(self.agents)):
+                if 1 in self.agents[i].next_move_to_exit:
+                    action_masks[i][0:4] = [False,False,False,False]
+                    action_masks[i][np.argmax(self.agents[i].next_move_to_exit)] = True
+                
         # reward function and done logic
-        reward = 0 + first_key_find*0.75 + first_exit_find*0.75#+ total_updates*0.001 + all_to_exit*0.004
-        # for visit in total_visits:
-        #     reward = reward + (visit-3)*-0.0001 if visit > 3 else reward
+        reward = first_key_find*0.5
+
         done = False
         if agents_have_key and len(self.agent_positions) == 1 and self.end in self.agent_positions :
-            reward += 1
+            reward = 1
             done = True
         elif self.current_t >= self.max_timestep:
             done = True
@@ -123,10 +129,9 @@ class Maze:
     def single_agent_step(self, agent, action):
         
         agent.current_t = self.current_t
-        agent.got_key = False
         updated_estimates = False
+        got_key = False
         move,mark = action[0], action[1]
-        punish = 0
         # print(f"{agent.name}: Move: {move}")
         # marking
         if mark == 1:
@@ -148,24 +153,30 @@ class Maze:
             direction = (move + agent.direction) % 4
             x_dif, y_dif = DELTAS[direction]
             new_x, new_y = agent.x + x_dif, agent.y + y_dif
+            if self.is_valid_cell(new_x, new_y) == False:
+                print(f'{agent.name}: {agent.next_move_to_exit}')
+                print(f'old:{agent.x, agent.y}')
+                print(f"new:{new_x, new_y}")
+                print()
+            if agent.knows_end:
+                
+                if len(agent.exit_route) > 0 and direction == agent.exit_route[-1]:
+                    agent.exit_route.pop()
+                    agent.exit_len -= 1
+                    
+                else:
+                    agent.exit_route.append((direction+2)%4)
+                    agent.exit_len += 1
             agent.move(new_x, new_y, direction)
             if (new_x, new_y) == self.key:
                 self.key = 0
                 agent.has_key = True
                 agent.team_has_key = True
-                agent.got_key = True
-            if move != 0:
-                agent.memory.append(move)
-                
-            if agent.knows_end:
-                if len(agent.exit_path) > 1 and (agent.x,agent.y) == agent.exit_path[-2]:
-                    agent.exit_path.pop()
-                    agent.exit_path_len -= 1
-                else:
-                    agent.exit_path.append((agent.x,agent.y))
-                    agent.exit_path_len += 1
-                    
-        return agent.x,agent.y,updated_estimates,agent.has_key, agent.got_key
+                got_key = True
+            agent.memory.append(move)
+            # visits = agent.update_visited_cells() # returns the amount of times the agent has been on that cell, used for rew
+            # print(f"name: {agent.name}, pos: {agent.x}, {agent.y} visits: {visits}")
+        return agent.x,agent.y,updated_estimates,agent.has_key, got_key
 
     def is_valid_cell(self, x, y):
         return (0 <= x < self.width and 0 <= y < self.height)
@@ -275,10 +286,9 @@ class Maze:
             if (self.layout[y][x] == 1 or (x,y) == self.end or (x,y) == self.start or (x,y) in self.shortest_path):
                 continue
             self.key = (x,y)
-            self.layout[y][x] = 5
             break
 
-    def get_shortest_path(self, start, end, actions=False):
+    def get_shortest_path(self, start, end):
         stack = [(start, [start])]
         visited = set([start])
 
@@ -289,7 +299,7 @@ class Maze:
 
             for x_dif, y_dif in DELTAS: 
                 next_x, next_y = x + x_dif, y + y_dif
-                if (self.is_valid_cell(next_x, next_y) and self.layout[next_y][next_x] != 1 and (next_x, next_y) not in visited):
+                if (self.is_valid_cell(next_x, next_y) and self.layout[next_y][next_x] == 0 and (next_x, next_y) not in visited):
                     visited.add((next_x, next_y))
                     stack.append(((next_x, next_y), path + [(next_x, next_y)]))
 
@@ -297,7 +307,10 @@ class Maze:
 
 
     # EVERYTHING BELOW RELATES ONLY TO RENDERING THE MAZE.
-    def draw_maze(self):
+    def draw_maze(self, id):
+        if id != None:
+            self.draw_hidden_maze(agent_tag=id)
+            return
         self.screen.fill(PATH_COLOR)
         tags = [agent.tag for agent in self.agents]
         mark_colors = [agent.mark_color for agent in self.agents]
@@ -320,18 +333,77 @@ class Maze:
             self.draw_key()
         # self.draw_signal() # draws signal if any
         pygame.display.flip()
-
+        
+    def draw_hidden_maze(self, agent_tag):
+        self.screen.fill(FOG_COLOR)
+        agent = None
+        other = None
+        for a in self.agents:
+            if a.tag == agent_tag:
+                agent = a
+            else:
+                other = a
+        if agent == None:
+            print('No such tag exists')
+            return
+        key,end,start = False,False,False
+        tags = [agent.tag for agent in self.agents]
+        mark_colors = [agent.mark_color for agent in self.agents]
+        pygame.draw.rect(self.screen, PATH_COLOR, (agent.x*CELL_SIZE, agent.y*CELL_SIZE, CELL_SIZE, CELL_SIZE))
+        for dir in range(len(DELTAS)):
+            next_x, next_y = agent.x, agent.y
+            x_dif, y_dif = DELTAS[dir]
+            if dir==0 or dir==2:
+                x_dif2, y_dif2 = 1,0
+            else:
+                x_dif2, y_dif2 = 0,1
+            for j in range(1,agent.vision_range+1):
+                next_x += x_dif
+                next_y += y_dif
+                if self.is_valid_cell(next_x, next_y) == False :
+                    break
+                if self.layout[next_y][next_x] == 1:
+                    pygame.draw.rect(self.screen, WALL_COLOR, (next_x*CELL_SIZE, next_y*CELL_SIZE, CELL_SIZE, CELL_SIZE))
+                    break
+                if (next_x,next_y) == self.key:
+                    key = True
+                if (next_x,next_y) == self.start:
+                    start = True
+                if (next_x,next_y) == self.end:
+                    end = True
+                for k in range (-1,2):
+                    next_x2, next_y2 =next_x+x_dif2*k, next_y+y_dif2*k
+                    if self.is_valid_cell(next_x2, next_y2) == False:
+                        continue
+                    next_cell = self.layout[next_y2][next_x2]
+                    if next_cell == 0:
+                        pygame.draw.rect(self.screen, PATH_COLOR, (next_x2*CELL_SIZE, next_y2*CELL_SIZE, CELL_SIZE, CELL_SIZE))
+                    elif next_cell == 1:
+                        pygame.draw.rect(self.screen, WALL_COLOR, (next_x2*CELL_SIZE, next_y2*CELL_SIZE, CELL_SIZE, CELL_SIZE))
+                    elif next_cell in tags:
+                        pygame.draw.rect(self.screen, mark_colors[tags.index(next_cell)], (next_x2*CELL_SIZE, next_y2*CELL_SIZE, CELL_SIZE, CELL_SIZE))
+                    if (next_x2, next_y2) in self.agent_positions:
+                        self.draw_one_agent(other, next_x2, next_y2, 0, 1)
+                        
+        if key == True:
+            self.draw_key()
+        if start == True:
+            self.draw_flags(end=False)
+        if agent.knows_end or end == True:
+            self.draw_flags(start=False)
+        self.draw_one_agent(agent, agent.x, agent.y, 0, 1)
+        pygame.display.flip()
+                
     def draw_agents(self):
-
         for x,y in self.agent_positions:
             agent_list = self.agent_positions[(x,y)]
-            x,y = self.get_cell_middle(x,y)
             count = 0
             for agent in agent_list:
                 self.draw_one_agent(agent,x,y,count,len(agent_list))
                 count+=1
             
     def draw_one_agent(self,agent,x,y,count,length):
+        x,y = self.get_cell_middle(x,y)
         if length == 3:
             if count == 0:
                 x -= CELL_SIZE/4
@@ -377,11 +449,15 @@ class Maze:
             pygame.draw.circle(ring_surface, (0, 0, 0, 0), (outer_radius, outer_radius), outer_radius-CELL_SIZE/10)
             self.screen.blit(ring_surface, (signal_center[0] - outer_radius, signal_center[1] - outer_radius))
     
-    def draw_flags(self):
-        end_position = self.get_cell_middle(self.end[0], self.end[1])
-        start_position = self.get_cell_middle(self.start[0], self.start[1])
-        flags = [end_position, start_position]
-
+    def draw_flags(self, start=True, end= True):
+        flags=[]
+        if start==True:
+            start_position = self.get_cell_middle(self.start[0], self.start[1])
+            flags.append(start_position)
+        if end==True:
+            end_position = self.get_cell_middle(self.end[0], self.end[1])
+            flags.append(end_position)
+        
         for x,y in flags:
             # rectangle dimensions
             rect_x, rect_y = x,y - CELL_SIZE/1.2
@@ -420,17 +496,16 @@ class Maze:
         self.screen = pygame.display.set_mode((screen_width, screen_height), pygame.RESIZABLE)
         pygame.display.set_caption("Multi Agent Maze")
 
-    def display_policy(self):
+    def display_policy(self, id=None):
         pygame.init()
         obs, masks = self.reset()
         self.set_screen()
-        self.draw_maze()
+        self.draw_maze(id=id)
         running = True
         is_moving = False
         
         def update_env():
             nonlocal obs, masks
-            # print(self.agents[1].brain.critic(obs))
             action = []
             for i in range (len(self.agents)):
                 agent_obs = obs[i]
@@ -440,12 +515,12 @@ class Maze:
                 action.append(agent_action)
             # print(f"prob of action:{action} is {prob}")
             obs, masks, reward, done = self.step(action)
-            self.draw_maze()
+            self.draw_maze(id=id)
 
             if done: 
                 obs, masks = self.reset()
                 self.set_screen()
-                self.draw_maze()  
+                self.draw_maze(id=id)
 
         while running:
             current_time = time.time()
@@ -456,7 +531,7 @@ class Maze:
                     if event.key == pygame.K_q:
                         obs, masks = self.reset()
                         self.set_screen()
-                        self.draw_maze()
+                        self.draw_maze(id=id)
                     elif event.key == pygame.K_e:
                         update_env()
                     elif event.key == pygame.K_w:
