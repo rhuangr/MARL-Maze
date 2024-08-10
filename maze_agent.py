@@ -1,4 +1,3 @@
-from PPO import PPO
 import numpy as np
 from math import exp
 from collections import deque
@@ -35,7 +34,6 @@ class Agent:
         self.exit_route = None
         self.has_key = False
         self.sees_key = False
-        self.got_key = False # just obtained key
         self.team_has_key = False
         self.other_last_seen = None
         self.time_from_last_seen = 0
@@ -93,7 +91,7 @@ class Agent:
         # start building the observation vector
         direction = [0,0,0,0]
         direction[self.direction] = 1
-        (visible_own_mark, visible_others_mark, visible_agents, visible_key, other_dir, other_last_pos) = self.get_visibility_features()
+        visible_own_mark, visible_others_mark, visible_agents, visible_key, other_dir, other_last_pos = self.get_visibility_features()
         dead_ends, move_action_mask = self.get_dead_ends()
         memory = self.get_memory()
         features = [direction, dead_ends, visible_own_mark, visible_others_mark,
@@ -101,8 +99,9 @@ class Agent:
         observations = []
         for feature in features:
             observations.extend(feature)
-            # since this project relies on agents not knowing the layout of the maze
-            # rel x, rel y represent the agent's estimate of his current position x,y
+            
+        # since this project relies on agents not knowing the layout of the maze
+        # rel x, rel y represent the agent's estimate of his current position x,y
         last_mark_pos = [0,0,0,0] if self.last_mark_pos == None else self.get_direction_from(self.last_mark_pos)
         observations.extend(last_mark_pos)
         relative_x = (self.x - self.min_x_visited) / self.width_estimate
@@ -110,21 +109,12 @@ class Agent:
         observations.extend([relative_x, relative_y])
         observations.extend(other_last_pos)
 
-        # SIGNAL RELATED FEATURE
-        # signal_direction = []
-        # for agent in self.maze.agents:
-        #     if agent == self:
-        #         continue
-        #     if agent.is_signalling:
-        #         signal_direction.extend(self.get_direction(agent.signal_origin))
-        #     else:
-        #         signal_direction.extend([0,0,0,0])
-        # observations.extend(signal_direction)
-
         observations.append(self.sees_end)
         next_move_to_exit = [0,0,0,0]
         if self.exit_route != None and len(self.exit_route) > 0:
             next_move_to_exit[(self.exit_route[-1] - self.direction)%4] = 1
+        else:
+            next_move_to_exit = [1,1,1,1]
         self.next_move_to_exit = next_move_to_exit
         observations.extend(next_move_to_exit)
         exit_len = self.exit_len/40 if self.exit_len < 40 else 1
@@ -132,7 +122,6 @@ class Agent:
         observations.append(self.other_knows_end)
         observations.append(self.has_key)
         observations.append(self.team_has_key)
-        # observations.append(self.got_key)
         other_last_seen = self.time_from_last_seen/40 if self.time_from_last_seen<40 else 1
         observations.append(other_last_seen)
         observations.append(self.current_t/self.maze.max_timestep)
@@ -144,12 +133,10 @@ class Agent:
             move_action_mask = [False,False, False, False]
             move_action_mask[np.argmax(visible_key)] = True
         mark_action_mask = True if self.maze.layout[self.y][self.x] != self.tag else False
-        no_move_mask = True if ((self.x, self.y) == self.maze.end and self.team_has_key) else False
+        no_move_mask = True if 1 in visible_agents and (self.x,self.x) == self.maze.end else False                        
         action_mask = move_action_mask
         action_mask.append(no_move_mask)
         action_mask.append(mark_action_mask)
-        # action_mask.append(signal_action_mask)
-        print(self.exit_route)
         return observations, action_mask
     
     # returns a list representing visible dead ends in all four directions
@@ -196,7 +183,8 @@ class Agent:
              move_action_mask = [dead_end==0 for dead_end in dead_ends]
         # print(f'name: {self.name} mask: {move_action_mask}, sees end{self.sees_end}')
         return dead_ends, move_action_mask
-        
+    
+    # return features corresponding to what the agent can see in the maze    
     def get_visibility_features(self):
         visible_own_mark = [0,0,0,0]
         visible_others_mark = [0,0,0,0]
@@ -205,7 +193,7 @@ class Agent:
         visible_key = [0,0,0,0]
         visible_agent_direction = [0,0,0,0]
         self.time_from_last_seen += 1
-        self.sees_end = False
+        self.sees_end = False or (self.x, self.y) == self.maze.end
         self.sees_key = False
         
         for agent in self.maze.agents:
@@ -218,6 +206,11 @@ class Agent:
                 self.team_has_key = self.team_has_key or agent.has_key
                 self.other_knows_end = self.other_knows_end or agent.knows_end
                 visible_agent_direction[agent.direction] = 1
+                if self.knows_end and agent.knows_end == False:
+                    agent.exit_route = [dir for dir in self.exit_route]
+                    self.other_knows_end = True
+                    agent.knows_end = True
+                    agent.other_knows_end = True
                 
         for dir in range(len(DELTAS)):
             next_x, next_y = self.x, self.y
@@ -256,6 +249,16 @@ class Agent:
                         agent_direction = [0,0,0,0]
                         agent_direction[dir] = 1
                         visible_agents.extend(agent_direction)
+                        if j == 1 and self.knows_end and agent.knows_end == False:
+                            agent.exit_route = [dir for dir in self.exit_route]
+                            if len(self.exit_route) > 0 and (dir+self.direction)%4 == self.exit_route[-1]:
+                                agent.exit_route.pop()
+                            else:
+                                agent.exit_route.append((dir+self.direction+2 )%4)
+                            self.other_knows_end = True
+                            agent.knows_end = True
+                            agent.other_knows_end = True
+                
                 # check for own marks
                 if self.maze.layout[next_y][next_x] == self.tag:
                     visible_own_mark[dir] += 1/self.vision_range
@@ -273,6 +276,7 @@ class Agent:
         return( visible_own_mark, visible_others_mark, visible_agents, visible_key,
                visible_agent_direction, agent_last_pos)
     
+    # updates dictionary for visisted cell (unused)
     def update_visited_cells(self):
         pos = (self.x,self.y)
         if pos in self.visited_cells:
@@ -307,7 +311,6 @@ class Agent:
         return direction
     
     def update_maze_minmax(self, direction, new_x, new_y):
-
         updated = False
         if direction == 0 and new_y < self.min_y_visited :
             self.min_y_visited = new_y
@@ -325,7 +328,7 @@ class Agent:
         return updated
     
     def update_maze_dims(self):
-                # ommited + 1 from the estimate calculations to avoid redundance in relative position calculations
+        # ommited + 1 from the estimate calculations to avoid redundance in relative position calculations
         new_width_estimate = self.max_x_visited - self.min_x_visited 
         new_height_estimate = self.max_y_visited - self.min_y_visited
         self.width_estimate = new_width_estimate if new_width_estimate != 0 else 1
@@ -340,6 +343,7 @@ class Agent:
         self.width_estimate = 1
         self.height_estimate = 1
    
+    # given a cell, returns its neighboring paths
     def get_neighbors(self, cell):
         x, y = cell
         neighbors = [False, False, False, False]
@@ -350,7 +354,7 @@ class Agent:
 
             if (self.maze.is_valid_cell(neighbor_x,neighbor_y) and self.maze.layout[neighbor_y][neighbor_x] != 1):
                 neighbors[i] = True
-
+                
         return neighbors
     
     def print_obs(self, obs):

@@ -15,9 +15,9 @@ AGENT_EYE_RADIUS = AGENT_RADIUS/3
 # SIGNAL_RADIUS = AGENT_RADIUS * 1.2
 # SIGNAL_DURATION = 6
 
-TIMESTEP_LENGTH = 0.04 # USED WHEN RENDERING THE GAME
+TIMESTEP_LENGTH = 0.08 # USED WHEN RENDERING THE GAME
 DELTAS = [(0, -1), (1, 0), (0, 1), (-1, 0)] # change in x,y after moving in respective cardinal direction
-random.seed(5)
+
 class Maze:
     def __init__(self, agents, max_timestep = 3500, difficulty=1, rand_start=False,
                  rand_sizes=False, rand_range=[6,12], default_size = [8,8]):
@@ -41,7 +41,6 @@ class Maze:
             agent.maze = self
             agent.brain.maze = self
         self.agent_positions = {}
-        # self.agent = Agent(16, 10, RED, self)
 
         self.max_timestep = max_timestep # amount of timesteps before truncation
         self.last_timestep = time.time() # used to animate the maze
@@ -53,27 +52,23 @@ class Maze:
         self.difficulty=difficulty
         self.default_size = default_size
         
-
     def reset(self):
         self.current_t = 0
         self.build_maze()
-
         self.agent_positions = {}
         self.exit_found = False
-
         obs = []
         masks = []
+        
         # resetting agent related
-        i = 0
-        for agent in self.agents:
+        for i in range(len(self.agents)):
+            agent = self.agents[i]
             posx, posy = self.shortest_path[i][0], self.shortest_path[i][1]
             agent.reset(posx, posy)
             self.agent_positions[(posx, posy)] = [agent]
             agent_obs, agent_mask = agent.get_observations()
             obs.append(agent_obs)
             masks.append(agent_mask)
-            
-            i += 1
         return obs, masks
     
     def step(self, action):
@@ -111,13 +106,13 @@ class Maze:
             exit_ready = exit_ready and agent.team_has_key and agent.knows_end   
         if exit_ready:   
             for i in range(len(self.agents)):
-                if 1 in self.agents[i].next_move_to_exit:
+                if (self.agents[i].x, self.agents[i].y) != self.end:
                     action_masks[i][0:4] = [False,False,False,False]
                     action_masks[i][np.argmax(self.agents[i].next_move_to_exit)] = True
-                
+                else:
+                    action_masks[i][0:5] = [False,False,False,False,True]
         # reward function and done logic
         reward = first_key_find*0.5
-
         done = False
         if agents_have_key and len(self.agent_positions) == 1 and self.end in self.agent_positions :
             reward = 1
@@ -132,21 +127,11 @@ class Maze:
         updated_estimates = False
         got_key = False
         move,mark = action[0], action[1]
-        # print(f"{agent.name}: Move: {move}")
+
         # marking
         if mark == 1:
             self.layout[agent.y][agent.x] = agent.tag
             agent.last_mark_pos = (agent.x, agent.y)
-        
-        # signalling
-        # if signal == 1:
-        #     agent.signal_origin = (agent.x, agent.y)
-        #     agent.is_signalling = True 
-        # if agent.signal_time <= SIGNAL_DURATION and agent.is_signalling == True:
-        #     agent.signal_time += 1
-        # else:
-        #     agent.signal_time = 0
-        #     agent.is_signalling = False
             
         # moving
         if move != 4: # if move action chosen is not to stand still
@@ -158,15 +143,16 @@ class Maze:
                 print(f'old:{agent.x, agent.y}')
                 print(f"new:{new_x, new_y}")
                 print()
-            if agent.knows_end:
                 
+            # updates the agents memory on route to exit
+            if agent.knows_end:
                 if len(agent.exit_route) > 0 and direction == agent.exit_route[-1]:
                     agent.exit_route.pop()
                     agent.exit_len -= 1
-                    
                 else:
                     agent.exit_route.append((direction+2)%4)
                     agent.exit_len += 1
+                    
             agent.move(new_x, new_y, direction)
             if (new_x, new_y) == self.key:
                 self.key = 0
@@ -174,13 +160,13 @@ class Maze:
                 agent.team_has_key = True
                 got_key = True
             agent.memory.append(move)
-            # visits = agent.update_visited_cells() # returns the amount of times the agent has been on that cell, used for rew
-            # print(f"name: {agent.name}, pos: {agent.x}, {agent.y} visits: {visits}")
         return agent.x,agent.y,updated_estimates,agent.has_key, got_key
 
+    # returns whether x,y is within bounds of maze data structure
     def is_valid_cell(self, x, y):
         return (0 <= x < self.width and 0 <= y < self.height)
 
+    # builds the maze: sets start, end, key, walls and paths
     def build_maze(self):
         if self.rand_sizes == True:
             size = random.randint(self.rand_range[0], self.rand_range[1]) * 2 - 1
@@ -234,13 +220,10 @@ class Maze:
     def get_neighbors(self, cell):
         x, y = cell
         neighbors = []
-
         for x_dif, y_dif in DELTAS:
             neighbor_x, neighbor_y = x + x_dif*2, y + y_dif*2
-
             if (self.is_valid_cell(neighbor_x, neighbor_y) and self.layout[neighbor_y][neighbor_x] == 1):
                 neighbors.append((neighbor_x, neighbor_y))
-
         return neighbors
     
     def set_start(self):
@@ -254,6 +237,8 @@ class Maze:
             self.start = (self.width//2,0) if self.width//2%2 == 0 else (self.width//2-1, 0)
             
     def set_end(self):
+        
+        # end is set at either the right or left edge of m
         coin = random.randint(0,1)
         x = 0 if coin == 0 else self.width-1
         while True:
@@ -263,24 +248,9 @@ class Maze:
             elif self.layout[y][x] == 0:
                 self.end = (x, y)
                 break
-            
-        # code for set end which sets in any outer edge of the maze
-        
-        # while True:
-        #     end_x = random.randint(0, self.width - 1)
-        #     end_y = random.randint(0, self.height - 1)
-        #     temp_end = [end_x, end_y]
-        #     coin = random.randint(0,1)
-        #     end_location = self.width - 1 if coin == 0 else self.height - 1
-        #     temp_end[coin] = end_location if random.randint(0,1) == 0 else 0
-        #     # print(f"{temp_end} and {self.width},{self.height}")
-        #     # print()
-        #     if self.maze[temp_end[1]][temp_end[0]] == 0:
-        #         self.end = (temp_end[0], temp_end[1])
-        #         break
         
     def set_key(self):
-        # min_path = max(self.height, self.width) #min(self.height, self.width) * (max(self.height, self.width)/)
+        # current version does not allow key to be in the path to exit, else would be too easy
         while True:
             x,y = random.randint(0,self.width-1), random.randint(0,self.height-1)
             if (self.layout[y][x] == 1 or (x,y) == self.end or (x,y) == self.start or (x,y) in self.shortest_path):
@@ -291,24 +261,21 @@ class Maze:
     def get_shortest_path(self, start, end):
         stack = [(start, [start])]
         visited = set([start])
-
         while stack:
             (x, y), path = stack.pop()
             if (x, y) == end:
                 return path 
-
             for x_dif, y_dif in DELTAS: 
                 next_x, next_y = x + x_dif, y + y_dif
                 if (self.is_valid_cell(next_x, next_y) and self.layout[next_y][next_x] == 0 and (next_x, next_y) not in visited):
                     visited.add((next_x, next_y))
                     stack.append(((next_x, next_y), path + [(next_x, next_y)]))
-
         return None
 
 
     # EVERYTHING BELOW RELATES ONLY TO RENDERING THE MAZE.
     def draw_maze(self, id):
-        if id != None:
+        if id != -1:
             self.draw_hidden_maze(agent_tag=id)
             return
         self.screen.fill(PATH_COLOR)
@@ -331,7 +298,6 @@ class Maze:
         self.draw_agents()
         if self.key != 0:
             self.draw_key()
-        # self.draw_signal() # draws signal if any
         pygame.display.flip()
         
     def draw_hidden_maze(self, agent_tag):
@@ -385,11 +351,11 @@ class Maze:
                     if (next_x2, next_y2) in self.agent_positions:
                         self.draw_one_agent(other, next_x2, next_y2, 0, 1)
                         
-        if key == True:
+        if key:
             self.draw_key()
-        if start == True:
+        if start or (agent.x, agent.y) == self.start:
             self.draw_flags(end=False)
-        if agent.knows_end or end == True:
+        if agent.knows_end or end:
             self.draw_flags(start=False)
         self.draw_one_agent(agent, agent.x, agent.y, 0, 1)
         pygame.display.flip()
@@ -436,6 +402,7 @@ class Maze:
         pygame.draw.circle(self.screen, WALL_COLOR, eye_center1, AGENT_EYE_RADIUS)
         pygame.draw.circle(self.screen, WALL_COLOR, eye_center2, AGENT_EYE_RADIUS)
         
+    # deprecated signal drawing function
     def draw_signal(self):
         for agent in self.agents:
             if agent.is_signalling == False:
@@ -496,8 +463,11 @@ class Maze:
         self.screen = pygame.display.set_mode((screen_width, screen_height), pygame.RESIZABLE)
         pygame.display.set_caption("Multi Agent Maze")
 
-    def display_policy(self, id=None):
+    def display_policy(self, id=-1):
         pygame.init()
+        agent_tags = [-1]
+        agent_tags.extend([agent.tag for agent in self.agents])
+        current_index = 0
         obs, masks = self.reset()
         self.set_screen()
         self.draw_maze(id=id)
@@ -538,6 +508,10 @@ class Maze:
                         print(self.agent_positions)
                         for i in range(len(self.agents)):
                             self.agents[i].print_obs(obs[i])
+                    elif event.key == pygame.K_s:
+                        id = agent_tags[(current_index+1)%3]
+                        self.draw_maze(id=id)
+                        current_index += 1
                     elif event.key == pygame.K_SPACE:
                         is_moving = True if is_moving == False else False
                                             

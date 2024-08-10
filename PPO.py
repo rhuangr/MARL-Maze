@@ -13,7 +13,7 @@ class PPO():
                   updates_per_batch=5, clip=0.2, max_grad=0.5):
         
         self.maze = None
-        self.actor = Actor([200,200,200])
+        self.actor = Actor([264,264,264])
         self.critic  = Critic(agent_amount, hidden_sizes=[64,64])
         self.actor_optim = torch.optim.Adam(self.actor.parameters(),lr=lr)
         self.critic_optim = torch.optim.Adam(self.critic.parameters(),lr = lr)
@@ -29,10 +29,6 @@ class PPO():
         self.max_grad = max_grad
 
         self.load_parameters()
-        # for param_group in self.actor_optim.param_groups:
-        #     print(param_group['lr'])
-        # for param_group in self.critic_optim.param_groups:
-        #     print(param_group['lr'])
 
     def train(self):
         for epoch in range(self.epochs):
@@ -71,10 +67,7 @@ class PPO():
                     for i in range(len(self.maze.agents)):
                         current_log_prob += self.get_log_probs(i, m_obs, m_actions, m_masks)
                     prob_ratios = torch.exp(current_log_prob - m_log_probs)
-
-                    # if start == 0 and update == 0:
-                    #     print(prob_ratios)
-
+                    
                     surrogate1 = prob_ratios * m_advantage
                     surrogate2 = torch.clamp(prob_ratios, 1-self.clip, 1+ self.clip) * m_advantage
                     
@@ -105,7 +98,6 @@ class PPO():
         # used to display learning progress
         batch_shortest_paths = []
         episode_lens = []
-        
         episode_rew = []
         episode_vals = []
         episode_dones = []
@@ -171,13 +163,8 @@ class PPO():
         mark_prob = torch.sigmoid(mark_logits)
         mark_prob = torch.where(torch.as_tensor(batch_marks, dtype=torch.bool), mark_prob, 1 - mark_prob)
         
-        # signal_logits = signal_logits.squeeze()
-        # signal_logits.masked_fill_(~batch_masks[:,i,5], float('-inf'))
-        # signal_prob = torch.sigmoid(signal_logits)
-        # signal_prob = torch.where(torch.as_tensor(batch_signals, dtype=torch.bool), signal_prob, 1 - signal_prob)
-        
         # calculating log prob
-        log_probs = move_probs + torch.log(mark_prob) #+ torch.log(signal_prob)
+        log_probs = move_probs + torch.log(mark_prob)
         return log_probs
 
     def get_action(self, obs, action_mask): 
@@ -192,15 +179,10 @@ class PPO():
         mark_prob = torch.sigmoid(mark_logits) if action_mask[5] == True else torch.tensor([[0]],dtype=torch.float32)
         mark = torch.bernoulli(mark_prob)
         mark_prob = mark_prob if mark == 1 else 1-mark_prob # p(marking) = mark prob, p(not marking) = 1 - p(marking)
-
-        # sampling signal
-        # signal_prob = torch.sigmoid(signal_logits) if action_mask[5] == True else torch.tensor([[0]],dtype=torch.float32)
-        # signal = torch.bernoulli(signal_prob)
-        # signal_prob = signal_prob if signal == 1 else 1-signal_prob
         
         # calculating jointlog probability of all moves
         log_prob = distribution.log_prob(move) + torch.log(mark_prob)
-        # print(f"move prob: {distribution.log_prob(move).exp()}")
+        print(f"move prob: {distribution.log_prob(move).exp()}")
         return [move.item(), mark.item()], log_prob
     
     
@@ -224,10 +206,8 @@ class PPO():
         rtgs = []     
         for episode_rew in reversed(batch_rew):
             discounted_rew = 0
-            # print(f"hi: {len(episode_rew)}", end= " ")
             for rew in reversed(episode_rew):
                 discounted_rew = rew + 0.995 * discounted_rew
-                # original methods use insert(0, discounted_rew) which is 0(n)
                 rtgs.append(discounted_rew)  
         rtgs.reverse()
         print(f'maze size: {self.maze.height} total discounted reward" {rtgs[0]}')

@@ -11,7 +11,7 @@ OBS_SPACE = np.sum(FEATURE_DIMS)
 EMBEDDING_DIM = 20
 
 class Actor(nn.Module):
-    # note: layer size does not include first layer since it is static
+    # note: do not include the input layer size when setting hidden_sizes
     def __init__(self, hidden_sizes=[164,164,164,164,164], activation=nn.ReLU):
         super(Actor, self).__init__()
         self.projection = Projection()
@@ -26,21 +26,18 @@ class Actor(nn.Module):
             
         self.move_head = nn.Linear(hidden_sizes[-1],5)
         self.mark_head = nn.Linear(hidden_sizes[-1],1)
-        # self.signal_head = nn.Linear(hidden_sizes[-1], 1)
         self.initialize_weights()
         
     def forward(self, x):
         x = torch.as_tensor(x, dtype=torch.float32).reshape(-1, OBS_SPACE)
         x = self.projection(x)
         x = self.attention(x)
-        # x = torch.reshape(x,(-1,FEATURE_AMOUNT * EMBEDDING_DIM))
         for i in range(len(self.layers)-1):
             x = self.activation()(self.layers[i](x))
             
         x = self.activation()(self.layers[-1](x))
         move = self.move_head(x)
         mark = self.mark_head(x)
-        # signal = self.signal_head(x)
         return [move,mark]
     
     def initialize_weights(self):
@@ -49,11 +46,9 @@ class Actor(nn.Module):
         with torch.no_grad():  
             self.move_head.weight *= 0.01
             self.mark_head.weight *= 0.01
-            # self.signal_head.weight *= 0.1
 
 # transforms individual features into embeddings of equal size, then passed into attention layer
 class Projection(nn.Module):
-
     def __init__(self):
         super(Projection, self).__init__()
         self.layers = nn.ModuleList()
@@ -67,7 +62,6 @@ class Projection(nn.Module):
             input_slice = input[:, index:index+FEATURE_DIMS[i]]
             embedding = self.layers[i](input_slice)
             observations.append(embedding)
-        # print(torch.cat(observations,dim=1).reshape(-1, FEATURE_AMOUNT, EMBEDDING_DIM).shape)
         return torch.cat(observations,dim=1).reshape(-1, FEATURE_AMOUNT, EMBEDDING_DIM)
 
 class m_Attention(nn.Module):
@@ -110,15 +104,3 @@ class Critic(nn.Module):
     def initialize_weights(self):
         for layer in self.layers:
             nn.init.orthogonal_(layer.weight)
-        
-if __name__ == "__main__":
-    x = torch.as_tensor(([[1.,1,1,1, 0., 1., 0., 1., 1., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0.,
-         0., 0., 0., 0.]]), dtype=torch.float32)
-    y = torch.as_tensor([[[2,3],[3,4],[4,5]],[[1,2],[2,3],[3,4]]], dtype=torch.float32)
-    z = torch.as_tensor(([[[1,2,3],[1,2,3]],[[1,2,3],[1,2,3]],[[1,2,3],[1,2,3]]]), dtype=torch.float32)
-    
-    
-    a = torch.as_tensor([[0.2,0.3,0.5],[0.2,0.3,0.5]], dtype=torch.float32)
-    b = torch.as_tensor([[0.3, 0.7]], dtype=torch.float32)
-    # print(torch.einsum("ij,ik->ikj",a,b))
-    x = [True]
