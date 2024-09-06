@@ -6,15 +6,17 @@ Agents are given 6 possible actions: move in any cardinal direction, stop, or ma
 
 This repository contains all the files necessary to train agents from scratch. Additionally, it contains the file `PPO.pth`, which represents the policy of the agents after my training with them.
 
-Shown below is a rendered version of the maze, where flags represent the start and exit.
-
+Shown below is a rendered version of the maze, where flags represent the start and exit. 
+> [!NOTE]
+> Although we see the whole layout of the maze, the agents do not.
+> The 's' button allows you to switch between the POV of the different agents while visualizing the policy.
 <img width="593" alt="Pygame Maze" src="https://github.com/user-attachments/assets/513f439b-2ab0-4eab-88b8-60ea3816aa38">
 
 
 ## Installation
 1.  Clone the repository.
 2.  Install the numpy, pygame, and pytorch libraries if not yet installed.
-3.  Run main.py to see the reslt of my training.  _You can paste the following commands while in the cloned repository directory 👍  `python pongGame.py`_
+3.  Run main.py to see the result of my training.  _You can paste the following commands while in the cloned repository directory 👍  `python pongGame.py`_
 
 ## Final notes
 - When visualizing the policy, click the following buttons:
@@ -22,6 +24,7 @@ Shown below is a rendered version of the maze, where flags represent the start a
   2. 'Q' to generate a new maze and reset agents at the start of the maze
   3. 'W' to print all agent observations in the terminal
   4. 'E' to take a single step for both agents.
+  5. 'S' to switch between different POVs.
 
 - If you wish to train agents from scratch, delete `PPO.pth` and uncomment `brain.train()` to start training.
 - Hyperparameters of the PPO algorithm can all be modified.
