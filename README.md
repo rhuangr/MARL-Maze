@@ -4,7 +4,7 @@ This project was an attempt to create a *much* smaller-scale version of [Open Ai
 
 Agents are given 6 possible actions: move in any cardinal direction, stop, or mark a tile with its respective color. As opposed to the researches used for reference, the agents' action space is discrete, otherwise training would take an eternity on my toaster computer.Initially, the project was intended to support a dynamic amount of agents, but since training time increases exponentially with the number of agents, I had to sacrifice this feature for faster debugging and training. Just like Open Ai's research, this project uses Proximal Policy Optimization to train its agents.
 
-This repository contains all the files necessary to train agents from scratch. Additionally, it contains the file `PPO.pth`, which represents the policy of the agents after my training with them.
+This repository contains all the files necessary to train agents from scratch. Additionally, it contains the file `PPO.pth`, which represents the policy of the agents after training for about 300 epochs.
 
 Shown below is a rendered version of the maze, where flags represent the start and exit. 
 > [!NOTE]
