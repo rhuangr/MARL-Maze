@@ -8,8 +8,8 @@ This repository contains all the files necessary to train agents from scratch. A
 
 Shown below is a rendered version of the maze, where flags represent the start and exit. 
 > [!NOTE]
-> Although we see the whole layout of the maze, the agents do not.
-> The 's' button allows you to switch between the POV of the different agents while visualizing the policy.
+> Although **we** see the whole layout of the maze, the agents **do not**.
+> The `S` button allows you to switch between the POVs of different agents while visualizing the current policy.
 <img width="593" alt="Pygame Maze" src="https://github.com/user-attachments/assets/513f439b-2ab0-4eab-88b8-60ea3816aa38">
 
 
@@ -20,11 +20,11 @@ Shown below is a rendered version of the maze, where flags represent the start a
 
 ## Final notes
 - When visualizing the policy, click the following buttons:
-  1. 'Space' to pause/unpause agent movement
-  2. 'Q' to generate a new maze and reset agents at the start of the maze
-  3. 'W' to print all agent observations in the terminal
-  4. 'E' to take a single step for both agents.
-  5. 'S' to switch between different POVs.
+  1. `Space` to pause/unpause agent movement
+  2. `Q` to generate a new maze and reset agents at the start of the maze
+  3. `W` to print all agent observations in the terminal
+  4. `E` to take a single step for both agents.
+  5. `S` to switch between different POVs.
 
 - If you wish to train agents from scratch, delete `PPO.pth` and uncomment `brain.train()` to start training.
 - Hyperparameters of the PPO algorithm can all be modified.
