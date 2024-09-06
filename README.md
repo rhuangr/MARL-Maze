@@ -10,8 +10,8 @@ Shown below is a rendered version of the maze, where flags represent the start a
 > [!NOTE]
 > Although **we** see the whole layout of the maze, the agents **do not**.
 > The `S` button allows you to switch between the POVs of different agents while visualizing the current policy.
-<img width="593" alt="Pygame Maze" src="https://github.com/user-attachments/assets/513f439b-2ab0-4eab-88b8-60ea3816aa38">
-
+<img width="300" alt="Screenshot 2024-09-06 at 3 32 58 AM" src="https://github.com/user-attachments/assets/77122e8f-0a25-475e-9783-a3198c3c71bc">
+<img width="300" alt="Screenshot 2024-09-06 at 3 33 14 AM" src="https://github.com/user-attachments/assets/1e549a23-e4fd-4042-80e1-54a1939cb462">
 
 ## Installation
 1.  Clone the repository.
