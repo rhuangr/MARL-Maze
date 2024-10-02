@@ -16,7 +16,7 @@ Shown below is a rendered version of the maze, where flags represent the start a
 ## Installation
 1.  Clone the repository.
 2.  Install the numpy, pygame, and pytorch libraries if not yet installed.
-3.  Run main.py to see the result of my training.  _You can paste the following commands while in the cloned repository directory 👍  `python pongGame.py`_
+3.  Run main.py to see the result of my training.  _You can paste the following commands while in the cloned repository directory 👍  `python main.py`_
 
 ## Final notes
 - When visualizing the policy, click the following buttons:
