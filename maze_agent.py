@@ -133,7 +133,7 @@ class Agent:
             move_action_mask = [False,False, False, False]
             move_action_mask[np.argmax(visible_key)] = True
         mark_action_mask = True if self.maze.layout[self.y][self.x] != self.tag else False
-        no_move_mask = True if 1 in visible_agents and (self.x,self.x) == self.maze.end else False                        
+        no_move_mask = True if 1 in visible_agents and (self.x,self.y) == self.maze.end else False                        
         action_mask = move_action_mask
         action_mask.append(no_move_mask)
         action_mask.append(mark_action_mask)

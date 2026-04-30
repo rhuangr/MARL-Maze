@@ -62,6 +62,7 @@ class Projection(nn.Module):
             input_slice = input[:, index:index+FEATURE_DIMS[i]]
             embedding = self.layers[i](input_slice)
             observations.append(embedding)
+            index += FEATURE_DIMS[i]
         return torch.cat(observations,dim=1).reshape(-1, FEATURE_AMOUNT, EMBEDDING_DIM)
 
 class m_Attention(nn.Module):
